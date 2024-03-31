@@ -33,6 +33,7 @@ public class UserServiceImpl implements UserService{
     @Override
     public AppUser updateMyInfo(UpdateRequest updateRequest, UserDetails userDetails) {
 
+        System.out.println("User details in updateMyInfo : " + userDetails.getUsername() + userDetails.getPassword());
         AppUser user = userRepository.findByEmail(userDetails.getUsername())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userDetails.getUsername()));
 

@@ -22,20 +22,18 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${ADMIN_PWD}")
     private String adminPassword;
 
-    @Override
-    @Transactional
     public void run(String... args) {
-
-        List<String> adminEmails = List.of("nikolas@gmail.com", "rizo@gmail.com");
-
-        adminEmails.forEach(email -> userRepository.findByEmail(email).ifPresent(userRepository::delete));
-
-        List<AppUser> initialUsers = List.of(
+        List<AppUser> admins = List.of(
                 new AppUser(null, "nikolas", "Spirou", "nikolas@gmail.com", passwordEncoder.encode(adminPassword), 27, "Senior SWE", "Greece", UserRole.ADMIN, UserStatus.ACTIVE),
                 new AppUser(null, "Nikos", "Rizogiannis", "rizo@gmail.com", passwordEncoder.encode(adminPassword), 27, "Senior SWE", "Greece", UserRole.ADMIN, UserStatus.ACTIVE)
         );
 
-        initialUsers.forEach(userRepository::save);
+        admins.forEach(admin -> {
+            userRepository.findByEmail(admin.getEmail())
+                    .ifPresent(userRepository::delete);
+            userRepository.save(admin);
+        });
+
         System.out.println("Admins recreated.");
     }
 }
