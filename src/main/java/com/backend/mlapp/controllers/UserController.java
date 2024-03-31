@@ -20,8 +20,8 @@ public class UserController {
     private final UserService userService;
 
     //Update Endpoint for the user himself even if he is Admin
-    @PutMapping("/updateMyInfo")
     @PreAuthorize("isAuthenticated()")
+    @PutMapping("/updateMyInfo")
     public ResponseEntity<String> updateMyInfo(@Valid @RequestBody UpdateRequest updateRequest,
                                                @AuthenticationPrincipal UserDetails userDetails)
     {

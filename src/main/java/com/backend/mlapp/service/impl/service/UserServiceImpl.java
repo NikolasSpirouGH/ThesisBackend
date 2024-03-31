@@ -25,43 +25,52 @@ public class UserServiceImpl implements UserService{
         AppUser appUser = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
 
-        boolean emailChanged = false;
-        if(updateRequest.getEmail()!=null) {
-            emailChanged = !appUser.getEmail().equals(updateRequest.getEmail());
-        }
-
-        if (emailChanged) {
-            appUser.setEmail(updateRequest.getEmail());
-            appUser.setStatus(UserStatus.INACTIVE);
-        }
-
-        if (updateRequest.getFirstname() != null) {
-            appUser.setFirstName(updateRequest.getFirstname());
-        }
-        if (updateRequest.getLastname() != null) {
-            appUser.setLastName(updateRequest.getLastname());
-        }
-        if (updateRequest.getAge() != null) {
-            appUser.setAge(updateRequest.getAge());
-        }
-        if (updateRequest.getCountry() != null) {
-            appUser.setCountry(updateRequest.getCountry());
-        }
-        if (updateRequest.getProfession() != null) {
-            appUser.setProfession(updateRequest.getProfession());
-        }
-
-        userRepository.save(appUser);
-
-        if (emailChanged) {
-            emailService.sendVerificationEmail(appUser);
-        }
-
+       update(appUser, updateRequest);
         return appUser;
     }
 
+    @Transactional
     @Override
     public AppUser updateMyInfo(UpdateRequest updateRequest, UserDetails userDetails) {
-        return new AppUser();
+
+        AppUser user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userDetails.getUsername()));
+
+        update(user, updateRequest);
+        return user;
+    }
+
+    private void update(AppUser user,UpdateRequest updateRequest){
+        boolean emailChanged = false;
+        if(updateRequest.getEmail()!=null) {
+            emailChanged = !user.getEmail().equals(updateRequest.getEmail());
+        }
+
+        if (emailChanged) {
+            user.setEmail(updateRequest.getEmail());
+            user.setStatus(UserStatus.INACTIVE);
+        }
+
+        if (updateRequest.getFirstname() != null) {
+            user.setFirstName(updateRequest.getFirstname());
+        }
+        if (updateRequest.getLastname() != null) {
+            user.setLastName(updateRequest.getLastname());
+        }
+        if (updateRequest.getAge() != null) {
+            user.setAge(updateRequest.getAge());
+        }
+        if (updateRequest.getCountry() != null) {
+            user.setCountry(updateRequest.getCountry());
+        }
+        if (updateRequest.getProfession() != null) {
+            user.setProfession(updateRequest.getProfession());
+        }
+
+        userRepository.save(user);
+
+        if (emailChanged) {
+            emailService.sendVerificationEmail(user);
+        }
     }
 }

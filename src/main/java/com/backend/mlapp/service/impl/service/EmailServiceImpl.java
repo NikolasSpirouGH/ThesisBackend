@@ -10,6 +10,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -20,13 +21,15 @@ public class EmailServiceImpl implements EmailService {
     private final EmailRepository emailRepository;
 
     public void sendVerificationEmail(AppUser user) {
-        String token = UUID.randomUUID().toString();
-        VerificationToken verificationToken = new VerificationToken();
-        verificationToken.setToken(token);
-        verificationToken.setUser(user);
-        verificationToken.setExpiryDate(new Date(System.currentTimeMillis() + 86400000));
 
-        emailRepository.save(verificationToken);
+        String token = UUID.randomUUID().toString();
+        VerificationToken newToken = new VerificationToken();
+        newToken.setToken(token);
+        newToken.setUser(user);
+        newToken.setExpiryDate(new Date(System.currentTimeMillis() + 86400000));
+
+        emailRepository.save(newToken);
+
         String subject = "Account Verification";
         String verificationUrl = "Enter the following token on the verification page: " + token;
         String message = "Hello " + user.getFirstName() + ",\n\n" + "Please verify your account by entering the token below on our website:\n\n" + verificationUrl + "\n\nThank you!";

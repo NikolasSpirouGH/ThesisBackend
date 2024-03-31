@@ -26,22 +26,16 @@ public class DataInitializer implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
 
+        List<String> adminEmails = List.of("nikolas@gmail.com", "rizo@gmail.com");
+
+        adminEmails.forEach(email -> userRepository.findByEmail(email).ifPresent(userRepository::delete));
+
         List<AppUser> initialUsers = List.of(
                 new AppUser(null, "nikolas", "Spirou", "nikolas@gmail.com", passwordEncoder.encode(adminPassword), 27, "Senior SWE", "Greece", UserRole.ADMIN, UserStatus.ACTIVE),
                 new AppUser(null, "Nikos", "Rizogiannis", "rizo@gmail.com", passwordEncoder.encode(adminPassword), 27, "Senior SWE", "Greece", UserRole.ADMIN, UserStatus.ACTIVE)
         );
 
-        for (AppUser initialUser : initialUsers) {
-            userRepository.findByEmail(initialUser.getEmail())
-                    .ifPresentOrElse(
-                            existingUser -> {
-                                System.out.println("User with email " + existingUser.getEmail() + " already exists.");
-                            },
-                            () -> {
-                                userRepository.save(initialUser);
-                                System.out.println("Admin Created" + initialUser.getEmail());
-                            }
-                    );
-        }
+        initialUsers.forEach(userRepository::save);
+        System.out.println("Admins recreated.");
     }
 }
