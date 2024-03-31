@@ -7,6 +7,10 @@ import com.backend.mlapp.payload.UpdateRequest;
 import com.backend.mlapp.repository.UserRepository;
 import com.backend.mlapp.service.EmailService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import com.backend.mlapp.service.UserService;
@@ -31,11 +35,18 @@ public class UserServiceImpl implements UserService{
 
     @Transactional
     @Override
-    public AppUser updateMyInfo(UpdateRequest updateRequest, UserDetails userDetails) {
+    public AppUser updateMyInfo(UpdateRequest updateRequest) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String username;
+        if (authentication.getPrincipal() instanceof UserDetails) {
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            username = userDetails.getUsername();
+        } else {
+            username = authentication.getPrincipal().toString();
+        }
 
-        System.out.println("User details in updateMyInfo : " + userDetails.getUsername() + userDetails.getPassword());
-        AppUser user = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userDetails.getUsername()));
+        AppUser user = userRepository.findByEmail(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + username));
 
         update(user, updateRequest);
         return user;

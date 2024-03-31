@@ -10,5 +10,5 @@ public interface UserService {
 
     AppUser updateUserInfo(UpdateRequest updateRequest, Integer id);
 
-    AppUser updateMyInfo(UpdateRequest updateRequest, UserDetails userDetails);
+    AppUser updateMyInfo(UpdateRequest updateRequest);
 }
