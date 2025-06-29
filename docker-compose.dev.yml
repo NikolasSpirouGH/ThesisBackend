@@ -9,6 +9,7 @@ services:
       - JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS}
     ports:
       - "8080:8080"
+      - "5005:5005"
     volumes:
       - .:/app
       - ~/.m2:/root/.m2

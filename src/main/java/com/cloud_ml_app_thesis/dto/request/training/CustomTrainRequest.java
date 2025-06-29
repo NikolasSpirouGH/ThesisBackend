@@ -11,7 +11,6 @@ import java.util.Map;
 
 @Data
 @Builder
-@ValidImageSource
 @Schema(description = "Request to train a model with a user-defined algorithm")
 public class CustomTrainRequest {
 
@@ -27,14 +26,8 @@ public class CustomTrainRequest {
     @Schema(description = "Optional JSON for parameter overrides (if needed)")
     private Map<String, String> parameters;
 
-    @Schema(description = "Option if docker hub reference is null")
-    private MultipartFile dockerTarFile;
-
     @Schema(description = "DatasetConfiguration ID")
     private Integer datasetConfigurationId;
-
-    @Schema(description = "Optional DockerHub url")
-    private String dockerHubUrl;
 
     @Schema(description = "The columns of dataset that user wants to train his algorithm")
     private String basicAttributesColumns;
