@@ -23,11 +23,8 @@ public class CustomTrainRequest {
     @Schema(description = "Training dataset file", type = "string", format = "binary")
     private MultipartFile datasetFile;
 
-    @Schema(description = "Optional JSON for parameter overrides (if needed)")
-    private Map<String, String> parameters;
-
-    @Schema(description = "DatasetConfiguration ID")
-    private Integer datasetConfigurationId;
+    @Schema(description = "(Optional) Parameters JSON , if user wants to change default values")
+    private MultipartFile paramsFile;
 
     @Schema(description = "The columns of dataset that user wants to train his algorithm")
     private String basicAttributesColumns;

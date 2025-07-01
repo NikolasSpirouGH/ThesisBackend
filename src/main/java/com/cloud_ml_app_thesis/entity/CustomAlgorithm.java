@@ -51,4 +51,6 @@ public class CustomAlgorithm {
     @OneToMany(mappedBy = "algorithm", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AlgorithmParameter> parameters = new ArrayList<>();
 
+
+    private CustomAlgorithmConfiguration customAlgorithmConfiguration;
 }

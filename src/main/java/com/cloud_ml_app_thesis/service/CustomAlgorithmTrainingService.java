@@ -36,7 +36,9 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,8 +78,8 @@ public class CustomAlgorithmTrainingService {
 
         try {
             // 1. Validate access
-            CustomAlgorithm algorithm = customAlgorithmRepository.findById(metadata.algorithmId())
-                    .orElseThrow(() -> new AlgorithmNotFoundException("Algorithm not found: id=" + metadata.algorithmId()));
+            CustomAlgorithm algorithm = customAlgorithmRepository.findById(metadata.algorithmId()).orElseThrow(() -> new IllegalStateException("Custom algorithm not found"));
+
 
             if (!algorithm.getAccessibility().getName().equals(AlgorithmAccessibiltyEnum.PUBLIC)
                     && !algorithm.getOwner().getUsername().equals(user.getUsername())) {
@@ -164,9 +166,11 @@ public class CustomAlgorithmTrainingService {
 
             log.info("✅ model: {}, metrics: {}", modelFile.getName(), metricsFile.getName());
 
+            String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
+
             // 8. Upload results to MinIO
-            String modelKey = user.getUsername() + "-" + modelFile.getName();
-            String metricsKey = user.getUsername() + "-" + metricsFile.getName();
+            String modelKey = user.getUsername() + "_" + timestamp + "_" + modelFile.getName();
+            String metricsKey = user.getUsername() + "_" + timestamp + "_" + metricsFile.getName();
             String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
             String metricsBucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
 
@@ -187,7 +191,7 @@ public class CustomAlgorithmTrainingService {
                     .orElseThrow(() -> new IllegalStateException("TrainingStatus COMPLETED not found"));
 
             Training training = Training.builder()
-                    .customAlgorithm(algorithm)
+                    .customAlgorithmConfiguration(algorithm)
                     .user(user)
                     .datasetConfiguration(config)
                     .status(completed)
