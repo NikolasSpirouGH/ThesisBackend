@@ -6,13 +6,13 @@ import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.AlgorithmType;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
+import com.cloud_ml_app_thesis.entity.Training;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
-import com.cloud_ml_app_thesis.exception.AlgorithmNotFoundException;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.repository.accessibility.DatasetAccessibilityRepository;
@@ -23,7 +23,6 @@ import com.cloud_ml_app_thesis.util.DockerContainerRunner;
 import com.cloud_ml_app_thesis.util.FileUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.oauth2.sdk.util.StringUtils;
-import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -39,9 +38,9 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -62,6 +61,9 @@ public class CustomAlgorithmTrainingService {
     private final CategoryRepository categoryRepository;
     private final DatasetConfigurationRepository datasetConfigurationRepository;
     private final ModelRepository modelRepository;
+    private final AlgorithmConfigurationRepository algorithmConfigurationRepository;
+    private final CustomAlgorithmConfigurationRepository customAlgorithmConfigurationRepository;
+    ObjectMapper mapper = new ObjectMapper();
 
 
     @Transactional
@@ -80,7 +82,6 @@ public class CustomAlgorithmTrainingService {
             // 1. Validate access
             CustomAlgorithm algorithm = customAlgorithmRepository.findById(metadata.algorithmId()).orElseThrow(() -> new IllegalStateException("Custom algorithm not found"));
 
-
             if (!algorithm.getAccessibility().getName().equals(AlgorithmAccessibiltyEnum.PUBLIC)
                     && !algorithm.getOwner().getUsername().equals(user.getUsername())) {
                 task.setStatus(TaskStatusEnum.FAILED);
@@ -93,20 +94,9 @@ public class CustomAlgorithmTrainingService {
                     metadata.datasetBucket(), metadata.datasetKey());
             log.info("📥 Dataset [{}] downloaded to: {}", metadata.datasetKey(), datasetPath);
 
-            DatasetConfiguration config = datasetConfigurationRepository.findById(metadata.datasetConfigurationId())
+            DatasetConfiguration datasetConfig = datasetConfigurationRepository.findById(metadata.datasetConfigurationId())
                     .orElseThrow(() -> new IllegalStateException("DatasetConfiguration not found"));
 
-            boolean alreadyTrained = trainingRepository
-                    .existsByCustomAlgorithmIdAndDatasetConfigurationId(algorithm.getId(), config.getId());
-
-            if (alreadyTrained) {
-                log.warn("🚫 Training already exists for algorithm={} and datasetConfiguration={}",
-                        algorithm.getId(), config.getId());
-                task.setStatus(TaskStatusEnum.FAILED);
-                task.setErrorMessage("Task already trained");
-                taskStatusRepository.save(task);
-                throw new IllegalStateException("This algorithm is already trained on the same dataset");
-            }
 
             CustomAlgorithmImage activeImage = algorithm.getImages().stream()
                     .filter(CustomAlgorithmImage::isActive)
@@ -135,12 +125,53 @@ public class CustomAlgorithmTrainingService {
                 throw new IllegalStateException("Active image has neither dockerTarKey nor dockerHubUrl");
             }
 
+            //Loading Parameters File from Minio
+            Map<String, Object> defaultParams = FileUtil.convertDefaults(algorithm.getParameters());
+            Map<String, Object> userParams = FileUtil.loadUserParamsFromMinio(minioService, metadata.paramsJsonKey(), metadata.paramsJsonBucket());
+            Map<String, Object> finalParams = FileUtil.mergeParams(defaultParams, userParams);
+
+            CustomAlgorithmConfiguration algoConfig = new CustomAlgorithmConfiguration();
+            algoConfig.setAlgorithm(algorithm);
+            CustomAlgorithmConfiguration savedConfig = customAlgorithmConfigurationRepository.save(algoConfig);
+
+            log.info("🧩 Final training parameters (merged):");
+            finalParams.forEach((key, value) -> log.info("  • {} = {} ({})", key, value, value != null ? value.getClass().getSimpleName() : "null"));
+
+            List<AlgorithmParameter> configParams = finalParams.entrySet().stream()
+                    .map(entry -> {
+                        AlgorithmParameter param = new AlgorithmParameter();
+                        param.setName(entry.getKey());
+                        param.setValue(entry.getValue().toString());
+                        param.setType(entry.getValue().getClass().getSimpleName()); // π.χ. Integer, Boolean
+                        param.setConfiguration(algoConfig);
+                        return param;
+                    })
+                    .collect(Collectors.toList());
+
+            savedConfig.setParameters(configParams);
+            customAlgorithmConfigurationRepository.save(savedConfig);
+
+            customAlgorithmConfigurationRepository.flush();
+
+            boolean alreadyTrained = trainingRepository
+                    .existsByCustomAlgorithmConfiguration_Algorithm_IdAndDatasetConfiguration_Id(algoConfig.getId(), datasetConfig.getId());
+
+            if (alreadyTrained) {
+                log.warn("🚫 Training already exists for algorithm={} and datasetConfiguration={}",
+                        algorithm.getId(), datasetConfig.getId());
+                task.setStatus(TaskStatusEnum.FAILED);
+                task.setErrorMessage("Task already trained");
+                taskStatusRepository.save(task);
+                throw new IllegalStateException("This algorithm is already trained on the same dataset");
+            }
+
             // 5. Prepare /data & /model directories
             Path basePath = FileUtil.getSharedPathRoot();
             dataDir = Files.createTempDirectory(basePath, "training-ds-");
             outputDir = Files.createTempDirectory(basePath, "training-out-");
 
-            FileUtil.writeParamsJson(algorithm, config, dataDir);
+
+            FileUtil.writeParamsJson(finalParams, datasetConfig, dataDir);
 
             Path datasetInside = dataDir.resolve("dataset.csv");
             Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
@@ -190,10 +221,12 @@ public class CustomAlgorithmTrainingService {
             TrainingStatus completed = trainingStatusRepository.findByName(TrainingStatusEnum.COMPLETED)
                     .orElseThrow(() -> new IllegalStateException("TrainingStatus COMPLETED not found"));
 
+
+            //TODO WE HAVE TO IMPLEMENT THE LOGIC OF ALGORITHM_CONFIGURATION
             Training training = Training.builder()
-                    .customAlgorithmConfiguration(algorithm)
+                    .customAlgorithmConfiguration(savedConfig)
                     .user(user)
-                    .datasetConfiguration(config)
+                    .datasetConfiguration(datasetConfig)
                     .status(completed)
                     .startedDate(ZonedDateTime.now())
                     .finishedDate(ZonedDateTime.now())
@@ -201,6 +234,7 @@ public class CustomAlgorithmTrainingService {
                     .build();
 
             trainingRepository.save(training);
+
 
             // 10. Save model entity
             AlgorithmType customType = algorithmTypeRepository.findByName(AlgorithmTypeEnum.CUSTOM)

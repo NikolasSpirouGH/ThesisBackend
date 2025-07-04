@@ -6,7 +6,6 @@ import com.cloud_ml_app_thesis.entity.AlgorithmType;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
-import com.cloud_ml_app_thesis.enumeration.accessibility.DatasetAccessibilityEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
 import com.cloud_ml_app_thesis.dto.request.training.*;
 import com.cloud_ml_app_thesis.dto.response.*;
@@ -17,6 +16,7 @@ import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.repository.AlgorithmTypeRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
+import com.cloud_ml_app_thesis.service.orchestrator.TrainingOrchestrator;
 import com.cloud_ml_app_thesis.util.AlgorithmUtil;
 import com.cloud_ml_app_thesis.util.ValidationUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,7 +45,7 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 public class TrainService {
 
-    private final TrainingRequestHelperService trainingRequestHelperService;
+    private final TrainingOrchestrator trainingOrchestrator;
     private final TrainingRepository trainingRepository;
 
     private final UserRepository userRepository;
@@ -98,7 +98,7 @@ public class TrainService {
     public GenericResponse<?> startTraining(TrainingStartRequest request, User user) throws Exception {
 
 
-        TrainingDataInput trainingDataInput =  trainingRequestHelperService.configureTrainingDataInputByTrainCase(request, user);
+        TrainingDataInput trainingDataInput =  trainingOrchestrator.configureTrainingDataInputByTrainCase(request, user);
         Training training = trainingDataInput.getTraining();
         TrainingStatus requestedStatus = trainingStatusRepository.findByName(TrainingStatusEnum.REQUESTED)
                 .orElseThrow(()-> new EntityNotFoundException("Training REQUESTED status not found"));
