@@ -1,0 +1,21 @@
+package com.cloud_ml_app_thesis.dto.request.execution;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import org.springframework.web.multipart.MultipartFile;
+
+@Schema(description = "Prediction request using model and prediction dataset")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class CustomExecuteRequest {
+
+    @Schema(description = "Model ID", example = "5", requiredMode = Schema.RequiredMode.REQUIRED)
+    private Integer modelId;
+
+    @Schema(description = "Prediction dataset (.csv)", requiredMode = Schema.RequiredMode.REQUIRED)
+    private MultipartFile predictionFile;
+
+}

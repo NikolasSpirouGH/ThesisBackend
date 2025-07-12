@@ -1,0 +1,59 @@
+package com.cloud_ml_app_thesis.service.orchestrator;
+
+import com.cloud_ml_app_thesis.dto.request.execution.CustomExecuteRequest;
+import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
+import com.cloud_ml_app_thesis.entity.User;
+import com.cloud_ml_app_thesis.entity.model.Model;
+import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
+import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
+import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
+import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
+import com.cloud_ml_app_thesis.repository.model.ModelRepository;
+import com.cloud_ml_app_thesis.service.DatasetService;
+import com.cloud_ml_app_thesis.util.AsyncManager;
+import jakarta.persistence.EntityNotFoundException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.stereotype.Component;
+
+import java.time.ZonedDateTime;
+import java.util.UUID;
+
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class CustomPredictionOrchestrator {
+
+    private final DatasetService datasetService;
+    private final TaskStatusRepository taskStatusRepository;
+    private final AsyncManager asyncManager;
+    private final ModelRepository modelRepository;
+
+    public String handleCustomPrediction(CustomExecuteRequest request, User user) {
+
+        Model model = modelRepository.findById(request.getModelId()).orElseThrow(() -> new EntityNotFoundException("Model with ID " + request.getModelId() + " not found"));
+        if (model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE) &&
+                !model.getTraining().getUser().getUsername().equals(user.getUsername())) {
+            throw new AuthorizationDeniedException("You are not authorized to access this model");
+        }
+
+        String taskId = UUID.randomUUID().toString();
+
+        String datasetKey = datasetService.uploadPredictionFile(request.getPredictionFile(), user);
+
+        log.info("Upload prediction file: {}", datasetKey);
+        AsyncTaskStatus task = AsyncTaskStatus.builder()
+                .taskId(taskId)
+                .taskType(TaskTypeEnum.PREDICTION)
+                .status(TaskStatusEnum.PENDING)
+                .startedAt(ZonedDateTime.now())
+                .username(user.getUsername())
+                .build();
+        taskStatusRepository.save(task);
+
+        asyncManager.predict(taskId, request.getModelId(), datasetKey, user);
+
+        return taskId;
+    }
+}

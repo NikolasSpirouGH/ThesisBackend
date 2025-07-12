@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+
+  backend:
+    build: .
+    container_name: cloud-ml-backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+      - minio
+      - mailhog
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/app-db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 1996
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_NAME: minioadmin
+      MINIO_ACCESS_SECRET: minioadmin
+      SPRING_MAIL_HOST: mailhog
+      SPRING_MAIL_PORT: 1025
+    volumes:
+      - ./keys:/app/keys  # αν έχεις public_key.pem / private_key.pem
+
+  db:
+    image: postgres:15
+    container_name: cloud-ml-db
+    restart: always
+    environment:
+      POSTGRES_DB: app-db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1996
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: cloud-ml-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: cloud-ml-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025" # UI → http://localhost:8025
+
+volumes:
+  db_data:
+  minio_data:

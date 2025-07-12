@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🔬 Cloud ML Platform API Docs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://unpkg.com/rapidoc/dist/rapidoc-min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    header {
+      background-color: #1976d2;
+      color: white;
+      text-align: center;
+      padding: 1rem;
+      font-size: 1.5rem;
+      font-weight: bold;
+      position: sticky;
+      top: 0;
+      z-index: 999;
+    }
+
+    #login-box {
+      display: flex;
+      gap: 0.5rem;
+      padding: 1rem;
+      background: #f4f4f4;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    #login-box input {
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    #login-box button {
+      padding: 0.5rem 1rem;
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #login-box button:hover {
+      background-color: #155a9a;
+    }
+
+    #theme-toggle {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      padding: 0.4rem 0.8rem;
+      border-radius: 5px;
+      background: white;
+      border: 1px solid #ccc;
+      cursor: pointer;
+      z-index: 999;
+    }
+
+    #token-container {
+      display: none;
+      margin: 0.5rem auto;
+      text-align: center;
+    }
+
+    #token-output {
+      width: 90%;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fafafa;
+      font-family: monospace;
+      resize: none;
+    }
+
+    #copy-token-btn {
+      margin-top: 0.3rem;
+      padding: 0.4rem 0.8rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 4px;
+    }
+
+    #copy-token-btn:hover {
+      background-color: #155a9a;
+    }
+  </style>
+</head>
+<body>
+
+<header>🔬 Cloud ML Platform – API Documentation</header>
+
+<div id="login-box">
+  <input type="text" id="username" placeholder="Username" value="jbiden">
+  <input type="password" id="password" placeholder="Password" value="123456">
+  <button onclick="login()">🔐 Login</button>
+  <button onclick="logout()">🚪 Logout</button>
+</div>
+
+<div id="token-container">
+  <textarea id="token-output" rows="2" readonly></textarea><br>
+  <button id="copy-token-btn" onclick="copyToken()">📋 Copy Token</button>
+</div>
+
+<button id="theme-toggle" onclick="toggleTheme()">🌓</button>
+
+<rapi-doc
+        id="doc"
+        spec-url="/v3/api-docs"
+        theme="light"
+        layout="row"
+        render-style="read"
+        show-header="true"
+        allow-authentication="true"
+        allow-server-selection="true"
+        allow-try="true"
+        use-path-in-nav-bar="true"
+        show-method-in-nav-bar="as-colored-block"
+        default-schema-tab="model"
+        nav-item-spacing="relaxed"
+        default-api-server="http://localhost:8080"
+>
+</rapi-doc>
+
+<script>
+  function toggleTheme() {
+    const doc = document.querySelector("rapi-doc");
+    const current = doc.getAttribute("theme");
+    doc.setAttribute("theme", current === "dark" ? "light" : "dark");
+  }
+
+  function login() {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    fetch("http://localhost:8080/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ username, password })
+    })
+            .then(res => {
+              if (!res.ok) throw new Error("Login failed");
+              return res.json();
+            })
+            .then(data => {
+              const token = data.dataHeader?.token;
+              if (!token) throw new Error("Token not found");
+
+              localStorage.setItem("jwt", token);
+              document.querySelector("rapi-doc").setAttribute("api-key", "Bearer " + token);
+              document.getElementById("token-output").value = token;
+              document.getElementById("token-container").style.display = "block";
+            })
+            .catch(err => {
+              console.error(err);
+              alert("❌ Invalid credentials or token not found");
+            });
+  }
+
+  function logout() {
+    localStorage.removeItem("jwt");
+    const doc = document.querySelector("rapi-doc");
+    doc.removeAttribute("api-key");
+    document.getElementById("token-output").value = "";
+    document.getElementById("token-container").style.display = "none";
+    alert("✅ Logged out. Token cleared.");
+  }
+
+  function copyToken() {
+    const textarea = document.getElementById("token-output");
+    textarea.select();
+    document.execCommand("copy");
+
+    alert("📋 Token copied to clipboard!");
+    // Hide token after copy
+    document.getElementById("token-output").value = "";
+    document.getElementById("token-container").style.display = "none";
+  }
+
+  window.onload = () => {
+    const token = localStorage.getItem("jwt");
+    if (token) {
+      document.querySelector("rapi-doc").setAttribute("api-key", "Bearer " + token);
+      document.getElementById("token-output").value = token;
+      document.getElementById("token-container").style.display = "block";
+    }
+  };
+</script>
+
+</body>
+</html>

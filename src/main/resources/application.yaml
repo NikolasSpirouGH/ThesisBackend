@@ -1,0 +1,42 @@
+spring:
+  profiles:
+    active: local
+
+  application:
+    name: CloudAppMLProject
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+  servlet:
+    multipart:
+      max-file-size: 512MB
+      max-request-size: 512MB
+
+jwt:
+  expirationMs: 3600000
+
+rsa:
+  private:
+    key-location: classpath:keys/private_key.pem
+  public:
+    key-location: classpath:keys/public_key.pem
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+dataset:
+  default-category-id: 1

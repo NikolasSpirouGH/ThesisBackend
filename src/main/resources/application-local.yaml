@@ -1,0 +1,53 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/app-db
+    username: postgres
+    password: 1996
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+  mail:
+    host: localhost
+    port: 1025
+    username: dummy
+    password: dummy
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    oauth2-redirect-url: /swagger-ui/oauth2-redirect.html
+    tryItOutEnabled: true
+    operationsSorter: method
+
+minio:
+  access:
+    name: minioadmin
+    secret: minioadmin
+  url: http://localhost:9000
+  bucket:
+    datasets: ml-datasets
+    algorithms: ml-algorithms
+    models: ml-models
+    predictions: ml-predictions
+    metrics: metrics
+    results: prediction-results
+    parameters: parameters
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG

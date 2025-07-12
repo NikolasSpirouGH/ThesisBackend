@@ -1,0 +1,67 @@
+
+spring:
+  application:
+    name: CloudAppMLProject
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  servlet:
+    multipart:
+      max-file-size: 512MB
+      max-request-size: 512MB
+
+  mail:
+    host: localhost
+    port: 1025
+    username:
+    password:
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
+
+rsa:
+  private:
+    key-location: classpath:keys/private_key.pem
+  public:
+    key-location: classpath:keys/public_key.pem
+jwt:
+  expirationMs: 3600000  # token expiration time in milliseconds (e.g., 1 hour)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+minio:
+  access:
+    name: minioadmin
+    secret: minioadmin
+  url: http://127.0.0.1:9000
+  bucket:
+    datasets: ml-datasets
+    models: ml-models
+    predictions: ml-predictions
+    algorithms: ml-algorithms
+    results: prediction-results
+    metrics: training-results
+
+dataset:
+  default-category-id: 1
+
+
+server:
+  address: 0.0.0.0
+  port: 8080
