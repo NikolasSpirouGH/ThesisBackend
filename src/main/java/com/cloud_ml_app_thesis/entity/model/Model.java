@@ -1,6 +1,6 @@
 package com.cloud_ml_app_thesis.entity.model;
 
-import com.cloud_ml_app_thesis.entity.AlgorithmType;
+import com.cloud_ml_app_thesis.entity.ModelType;
 import com.cloud_ml_app_thesis.entity.Category;
 import com.cloud_ml_app_thesis.entity.Training;
 import com.cloud_ml_app_thesis.entity.accessibility.ModelAccessibility;
@@ -37,7 +37,7 @@ public class Model {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "algorithm_type_id", nullable = false)
-    private AlgorithmType algorithmType;
+    private ModelType modelType;
 
     @ManyToOne
     @JoinColumn(name = "status_id")

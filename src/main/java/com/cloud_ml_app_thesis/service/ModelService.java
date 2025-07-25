@@ -2,14 +2,16 @@ package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
 import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
+import com.cloud_ml_app_thesis.dto.train.ClusterEvaluationResult;
+import com.cloud_ml_app_thesis.dto.train.EvaluationResult;
+import com.cloud_ml_app_thesis.dto.train.RegressionEvaluationResult;
 import com.cloud_ml_app_thesis.entity.Category;
 import com.cloud_ml_app_thesis.entity.Training;
 import com.cloud_ml_app_thesis.entity.accessibility.ModelAccessibility;
-import com.cloud_ml_app_thesis.entity.AlgorithmType;
+import com.cloud_ml_app_thesis.entity.ModelType;
 import com.cloud_ml_app_thesis.entity.model.Keyword;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.User;
-import com.cloud_ml_app_thesis.entity.status.ModelStatus;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
 import com.cloud_ml_app_thesis.enumeration.status.ModelStatusEnum;
@@ -17,8 +19,9 @@ import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.repository.accessibility.ModelAccessibilityRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
-import com.cloud_ml_app_thesis.repository.AlgorithmTypeRepository;
+import com.cloud_ml_app_thesis.repository.ModelTypeRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelStatusRepository;
+import com.cloud_ml_app_thesis.util.AlgorithmUtil;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import jakarta.persistence.EntityNotFoundException;
@@ -37,10 +40,12 @@ import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
 import weka.clusterers.ClusterEvaluation;
 import weka.clusterers.Clusterer;
+import weka.core.Instance;
 import weka.core.Instances;
 
 import java.io.*;
 import java.net.URI;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -65,7 +70,7 @@ public class ModelService {
 
     private final TrainingRepository trainingRepository;
     private final ModelAccessibilityRepository modelAccessibilityRepository;
-    private final AlgorithmTypeRepository algorithmTypeRepository;
+    private final ModelTypeRepository modelTypeRepository;
 
     @Value("${minio.url}")
     private String minioUrl;
@@ -91,24 +96,23 @@ public class ModelService {
     }
 
     @Transactional
-    public Integer finalizeModel(Integer trainingId, UserDetails userDetails, ModelFinalizeRequest request) {
-        log.info("🔐 Finalizing model for trainingId={} by user={}", trainingId, userDetails.getUsername());
+    public void finalizeModel(Integer modelId, UserDetails userDetails, ModelFinalizeRequest request) {
+        log.info("🔐 Finalizing model for modelId={} by user={}", modelId, userDetails.getUsername());
 
         User user = userRepository.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-        Training training = trainingRepository.findById(trainingId)
-                .orElseThrow(() -> new EntityNotFoundException("Training with ID " + trainingId + " not found"));
+        Model model = modelRepository.findById(modelId).orElseThrow(() -> new EntityNotFoundException("Model not found"));
 
-        if (!training.getUser().getUsername().equals(user.getUsername())) {
-            throw new AccessDeniedException("You do not own this training.");
+        if (!model.getTraining().getUser().getUsername().equals(user.getUsername())) {
+            throw new AccessDeniedException("You do not own this model.");
         }
 
-        if (!training.getStatus().getName().toString().equalsIgnoreCase("COMPLETED")) {
+        if (!model.getTraining().getStatus().getName().toString().equalsIgnoreCase("COMPLETED")) {
             throw new IllegalStateException("Training must be completed before finalizing a model.");
         }
+        Training training = model.getTraining();
 
-        Model model = training.getModel();
         if (model == null) {
             throw new IllegalStateException("No model found for this training.");
         }
@@ -120,7 +124,7 @@ public class ModelService {
         model.setDescription(request.getDescription());
         log.info("✔️ modelDescription = {}", request.getDescription());
 
-        model.setDataDescription(training.getDatasetConfiguration().getDataset().getDescription());
+        model.setDataDescription(request.getDataDescription());
         log.info("✔ dataDescription = {}", training.getDatasetConfiguration().getDataset().getDescription());
 
         model.setFinalizationDate(ZonedDateTime.now());
@@ -146,12 +150,9 @@ public class ModelService {
 
         modelRepository.save(model);
         log.info("✅ Model with ID={} finalized successfully", model.getId());
-
-        return model.getId();
     }
 
-    public void saveModel(Training training, String modelUrl, String metricsUrl, AlgorithmType algorithmType, User user) {
-
+    public void saveModel(Training training, String modelUrl, String metricsUrl, ModelType modelType, User user) {
         ModelAccessibility accessibility = modelAccessibilityRepository
                 .findByName(ModelAccessibilityEnum.PRIVATE)
                 .orElseThrow(() -> new EntityNotFoundException("Could not find accessibility"));
@@ -162,44 +163,124 @@ public class ModelService {
 
         Model model = new Model();
         model.setTraining(training);
-        model.setModelUrl(modelUrl); // Truncate if needed
+        model.setModelUrl(modelUrl);
         model.setMetricsUrl(metricsUrl);
         model.setStatus(modelStatusRepository.findByName(ModelStatusEnum.IN_PROGRESS)
                 .orElseThrow(() -> new EntityNotFoundException("Could not find IN_PROGRESS model status")));
-        model.setAlgorithmType(algorithmType);
-        model.setFinishedAt(training.getFinishedDate());
+        model.setModelType(modelType);
+        ZonedDateTime finishedZoned = training.getFinishedDate().withZoneSameInstant(ZoneId.of("Europe/Athens"));
+        model.setFinishedAt(finishedZoned);
         model.setAccessibility(accessibility);
         model.setCategory(defaultCategory);
 
         modelRepository.save(model);
     }
 
-    public String evaluateClassifier(Classifier cls, Instances train, Instances test) throws Exception {
+    private Clusterer trainClusterer(Instances data, String className, String options) throws Exception {
+        data.randomize(new Random(1));
+        Clusterer clus = AlgorithmUtil.getClustererInstance(className);
+        AlgorithmUtil.setClustererOptions(clus, options.split(","));
+        clus.buildClusterer(data);
+        return clus;
+    }
+
+    public ByteArrayResource getMetricsFile(Integer id, User user) {
+        Model model = modelRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
+
+        boolean isOwner = model.getTraining().getUser().getUsername().equals(user.getUsername());
+        if (!isOwner && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
+            throw new AuthorizationDeniedException("You are not authorized to access this model’s metrics");
+        }
+
+        String metricsUrl = model.getMetricsUrl();
+        if (metricsUrl == null || metricsUrl.isBlank()) {
+            throw new FileProcessingException("❌ Model does not contain metrics URL", null);
+        }
+
+        String key = minioService.extractMinioKey(metricsUrl);
+        String bucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
+        byte[] content = minioService.downloadObjectAsBytes(bucket, key);
+
+        return new ByteArrayResource(content);
+    }
+
+    public EvaluationResult evaluateClassifier(Classifier cls, Instances train, Instances test) throws Exception {
         Evaluation eval = new Evaluation(train);
         eval.evaluateModel(cls, test);
 
-        String results = "Classifier trained successfully. \nEvaluation results:\n" +
-                "Accuracy: " + String.format("%.2f%%", eval.pctCorrect()) + "\n" +
-                "Precision: " + String.format("%.2f%%", eval.weightedPrecision() * 100) + "\n" +
-                "Recall: " + String.format("%.2f%%", eval.weightedRecall() * 100) + "\n" +
-                "F1 Score: " + String.format("%.2f%%", eval.weightedFMeasure() * 100) + "\n" +
-                "Summary: " + eval.toSummaryString();
+        double[][] cmatrix = eval.confusionMatrix();
+        List<List<Integer>> matrix = new ArrayList<>();
+        for (double[] row : cmatrix) {
+            List<Integer> rowList = new ArrayList<>();
+            for (double val : row) {
+                rowList.add((int) val);
+            }
+            matrix.add(rowList);
+        }
 
-        logger.info(results);
-        return results;
+        List<String> labels = new ArrayList<>();
+        for (int i = 0; i < train.classAttribute().numValues(); i++) {
+            labels.add(train.classAttribute().value(i));
+        }
+
+        return new EvaluationResult(
+                String.format("%.2f%%", eval.pctCorrect()),
+                String.format("%.2f%%", eval.weightedPrecision() * 100),
+                String.format("%.2f%%", eval.weightedRecall() * 100),
+                String.format("%.2f%%", eval.weightedFMeasure() * 100),
+                eval.toSummaryString(),
+                matrix,
+                labels
+        );
     }
 
-    public String evaluateClusterer(Clusterer clusterer, Instances data) throws Exception {
+    public RegressionEvaluationResult evaluateRegressor(Classifier regressor, Instances train, Instances test) throws Exception {
+        Evaluation eval = new Evaluation(train);
+        eval.evaluateModel(regressor, test);
+
+        List<Double> actual = new ArrayList<>();
+        List<Double> predicted = new ArrayList<>();
+
+        for (int i = 0; i < test.numInstances(); i++) {
+            Instance inst = test.instance(i);
+            double pred = regressor.classifyInstance(inst);
+            double actualValue = inst.classValue();
+
+            actual.add(actualValue);
+            predicted.add(pred);
+        }
+
+        return new RegressionEvaluationResult(
+                eval.rootMeanSquaredError(),
+                eval.meanAbsoluteError(),
+                Math.pow(eval.correlationCoefficient(), 2),
+                eval.toSummaryString(),
+                actual,
+                predicted
+        );
+    }
+
+    public ClusterEvaluationResult evaluateClusterer(Clusterer clusterer, Instances data) throws Exception {
         ClusterEvaluation eval = new ClusterEvaluation();
         eval.setClusterer(clusterer);
         eval.evaluateClusterer(data);
 
-        String results = "Clusterer trained successfully. \nEvaluation results:\n" +
-                eval.clusterResultsToString();
+        int numClusters = eval.getNumClusters();
+        double logLikelihood = eval.getLogLikelihood();
+        String[] assignments = new String[data.numInstances()];
+        for (int i = 0; i < data.numInstances(); i++) {
+            assignments[i] = "Instance " + i + " assigned to cluster " + clusterer.clusterInstance(data.instance(i));
+        }
 
-        logger.info(results);
-        return results;
+        return new ClusterEvaluationResult(
+                numClusters,
+                logLikelihood,
+                assignments,
+                eval.clusterResultsToString()
+        );
     }
+
 
     public String generateMinioUrl(String bucket, String objectKey) {
         return minioUrl + "/" + bucket + "/" + objectKey;

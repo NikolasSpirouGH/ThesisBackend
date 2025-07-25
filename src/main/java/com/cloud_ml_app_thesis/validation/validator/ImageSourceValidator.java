@@ -1,7 +1,6 @@
 package com.cloud_ml_app_thesis.validation.validator;
 
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmCreateRequest;
-import com.cloud_ml_app_thesis.dto.request.training.CustomTrainRequest;
 import com.cloud_ml_app_thesis.validation.validation.ValidImageSource;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;

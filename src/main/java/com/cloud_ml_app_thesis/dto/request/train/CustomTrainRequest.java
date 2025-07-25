@@ -1,13 +1,10 @@
-package com.cloud_ml_app_thesis.dto.request.training;
+package com.cloud_ml_app_thesis.dto.request.train;
 
-import com.cloud_ml_app_thesis.validation.validation.ValidImageSource;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
 import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.Map;
 
 @Data
 @Builder

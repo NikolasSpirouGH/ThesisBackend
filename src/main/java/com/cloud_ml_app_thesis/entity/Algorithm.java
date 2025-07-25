@@ -1,13 +1,7 @@
 package com.cloud_ml_app_thesis.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import org.springframework.web.bind.annotation.CrossOrigin;
-
-import java.util.List;
+import lombok.*;
 
 @Entity
 @Table(name = "algorithms", uniqueConstraints = @UniqueConstraint(columnNames = "name"))
@@ -15,6 +9,7 @@ import java.util.List;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 public class Algorithm {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,6 +21,10 @@ public class Algorithm {
 
     @Column(length = 5000)
     private String description;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "type_id", nullable = false)
+    private AlgorithmType type;
 
     @Column(length = 5000)
     private String options;

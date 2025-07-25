@@ -1,6 +1,6 @@
-package com.cloud_ml_app_thesis.service.orchestrator;
+package com.cloud_ml_app_thesis.util.orchestrator;
 
-import com.cloud_ml_app_thesis.dto.request.execution.CustomExecuteRequest;
+import com.cloud_ml_app_thesis.dto.request.execution.ExecuteRequest;
 import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.model.Model;
@@ -23,14 +23,14 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class CustomPredictionOrchestrator {
+public class PredictionOrchestrator {
 
     private final DatasetService datasetService;
     private final TaskStatusRepository taskStatusRepository;
     private final AsyncManager asyncManager;
     private final ModelRepository modelRepository;
 
-    public String handleCustomPrediction(CustomExecuteRequest request, User user) {
+    public String handlePrediction(ExecuteRequest request, User user) {
 
         Model model = modelRepository.findById(request.getModelId()).orElseThrow(() -> new EntityNotFoundException("Model with ID " + request.getModelId() + " not found"));
         if (model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE) &&
@@ -52,7 +52,11 @@ public class CustomPredictionOrchestrator {
                 .build();
         taskStatusRepository.save(task);
 
-        asyncManager.predict(taskId, request.getModelId(), datasetKey, user);
+        switch (model.getModelType().getName()) {
+            case CUSTOM -> asyncManager.predictCustom(taskId, request.getModelId(), datasetKey, user);
+            case PREDEFINED -> asyncManager.predictPredefined(taskId, request.getModelId(), datasetKey, user);
+            default -> throw new IllegalArgumentException("Unsupported algorithm type: " + model.getModelType().getName());
+        }
 
         return taskId;
     }

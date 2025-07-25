@@ -13,5 +13,5 @@ public interface TaskStatusRepository extends JpaRepository<AsyncTaskStatus, Str
 
 
     @Query("select t.modelId from AsyncTaskStatus t where t.taskId =:taskId")
-   Optional<Integer> findModelIdByTaskId(@Param("taskId") String taskId);
+   Optional<AsyncTaskStatus> findModelIdByTaskId(@Param("taskId") String taskId);
 }

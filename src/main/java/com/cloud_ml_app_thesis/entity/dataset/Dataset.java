@@ -22,6 +22,7 @@ import java.util.Set;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 @Table(name="datasets")
 public class Dataset {
     //CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

@@ -1,12 +1,13 @@
 package com.cloud_ml_app_thesis.util;
 
-import com.cloud_ml_app_thesis.entity.AlgorithmParameter;
-import com.cloud_ml_app_thesis.entity.CustomAlgorithm;
-import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
+import com.cloud_ml_app_thesis.dto.train.EvaluationResult;
+import com.cloud_ml_app_thesis.dto.train.TrainMetricResult;
+import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.service.MinioService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.nimbusds.oauth2.sdk.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -120,6 +121,17 @@ public class FileUtil {
             case "boolean", "bool" -> Boolean.parseBoolean(value);
             default -> value;
         };
+    }
+
+    public static Path writeMetricsToJsonFile(TrainMetricResult metrics) throws IOException {
+        try {
+            Path tempFile = Files.createTempFile("metrics", ".json");
+            ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+            objectMapper.writeValue(tempFile.toFile(), metrics);
+            return tempFile;
+        } catch (IOException e) {
+            throw new FileProcessingException("Failed to write metrics file", e);
+        }
     }
 
 }

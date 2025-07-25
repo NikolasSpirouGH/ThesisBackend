@@ -85,7 +85,7 @@ public class BasicFullCustomFlowIT {
                 .contentType(ContentType.MULTIPART)
                 .multiPart("datasetFile", datasetFile)
                 .multiPart("algorithmId", algorithmId)
-                .multiPart("basicAttributesColumns", "feature1, feature2")
+                .multiPart("basicAttributesColumns", "feature1, feature2", "feature3")
                 .multiPart("targetColumn", "label")
                 .when()
                 .post("/api/train/custom")
@@ -259,8 +259,8 @@ public class BasicFullCustomFlowIT {
      private void loginAndSetToken() {
         String loginPayload = """
         {
-          "username": "jbiden",
-          "password": "Str0ngP@ssw0rd"
+          "username": "bigspy",
+          "password": "adminPassword"
         }
             """;
 

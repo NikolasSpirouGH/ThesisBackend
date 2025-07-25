@@ -4,6 +4,7 @@ import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.dto.task.AsyncTaskStatusDTO;
 import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
+import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
 import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.service.TaskStatusService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -95,4 +96,5 @@ public class AsyncTaskStatusController {
         GenericResponse<Map<String, Integer>> response = GenericResponse.success("Execution ID retrieved successfully", responseBody);
         return ResponseEntity.ok(response);
     }
+
 }

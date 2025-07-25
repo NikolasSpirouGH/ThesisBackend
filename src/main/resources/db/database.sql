@@ -33,3 +33,31 @@ select * from jwt_tokens;
 select * from models_executions;
 
 select * from async_task_status;
+
+select * from algorithms where class_name='weka.classifiers.functions.LinearRegression';
+
+select * from algorithm_configurations;
+
+select * from trainings;
+
+select * from users;
+select * from algorithms;
+
+DROP DATABASE "app-db";
+
+select * from const_algorithm_types;
+SELECT id, name FROM const_algorithm_types;
+
+select * from const_model_types;
+
+select * from users;
+
+select * from algorithm_configurations;
+DELETE FROM trainings
+WHERE dataset_id IS NULL;
+
+select * from models;
+
+select * from datasets;
+
+select * from categories;

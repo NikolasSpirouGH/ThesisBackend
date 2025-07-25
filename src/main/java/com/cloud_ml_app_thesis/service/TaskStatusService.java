@@ -15,6 +15,8 @@ import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 
+import java.time.ZonedDateTime;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -64,4 +66,37 @@ public class TaskStatusService {
         }
         return task;
     }
+
+    public void initTask(String taskId, TaskTypeEnum taskType, String username) {
+        AsyncTaskStatus status = AsyncTaskStatus.builder()
+                .taskId(taskId)
+                .taskType(taskType)
+                .status(TaskStatusEnum.PENDING)
+                .username(username)
+                .startedAt(ZonedDateTime.now())
+                .build();
+
+        taskStatusRepository.save(status);
+        log.info("[TASK INIT] [{}] [{}] by user={}", taskType, taskId, username);
+    }
+
+    public void completeTask(String taskId) {
+        taskStatusRepository.findModelIdByTaskId(taskId).ifPresent(task -> {
+            task.setStatus(TaskStatusEnum.COMPLETED);
+            task.setFinishedAt(ZonedDateTime.now());
+            taskStatusRepository.save(task);
+            log.info("Task completed [{}]", taskId);
+        });
+    }
+
+    public void taskFailed(String taskId, String errorMessage) {
+        taskStatusRepository.findModelIdByTaskId(taskId).ifPresent(task -> {
+            task.setStatus(TaskStatusEnum.FAILED);
+            task.setErrorMessage(errorMessage);
+            task.setFinishedAt(ZonedDateTime.now());
+            taskStatusRepository.save(task);
+            log.info("Task failed [{}]", taskId);
+        });
+    }
 }
+

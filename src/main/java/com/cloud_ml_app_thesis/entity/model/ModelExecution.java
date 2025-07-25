@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 
 @Entity
 @Table(name="models_executions")
@@ -23,7 +24,7 @@ public class ModelExecution {
     @JoinColumn(name = "model_id")
     private Model model;
 
-    private LocalDateTime executedAt;
+    private ZonedDateTime executedAt;
 
     @ManyToOne
     @JoinColumn(name = "status_id")

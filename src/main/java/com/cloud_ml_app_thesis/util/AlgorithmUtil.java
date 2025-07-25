@@ -1,18 +1,21 @@
 package com.cloud_ml_app_thesis.util;
 
 import com.cloud_ml_app_thesis.service.AlgorithmService;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Classifier;
 import weka.clusterers.Clusterer;
+import weka.core.Instances;
 import weka.core.OptionHandler;
 
 import java.lang.reflect.Constructor;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
+@Slf4j
 public class AlgorithmUtil {
     private static final Logger logger = LoggerFactory.getLogger(AlgorithmUtil.class);
 
@@ -36,6 +39,17 @@ public class AlgorithmUtil {
         }
     }
 
+    public static boolean isClassification(Instances data) {
+        return data.classAttribute().isNominal();
+    }
+
+    public static boolean isRegression(Instances data) {
+        return data.classAttribute().isNumeric();
+    }
+
+    public static boolean isClustering(Instances data) {
+        return data.classIndex() == -1;
+    }
 
     public static Classifier getClassifierInstance(String algorithmClassName) throws Exception {
         Class<?> clazz = Class.forName(algorithmClassName);
@@ -50,7 +64,6 @@ public class AlgorithmUtil {
     }
 
     public static void setClassifierOptions(Classifier classifier, String[] options) throws Exception {
-        //TODO if not instanceof ? throw exception?
         if (classifier instanceof OptionHandler) {
             ((OptionHandler) classifier).setOptions(options);
         }
@@ -63,61 +76,17 @@ public class AlgorithmUtil {
         }
     }
 
-
-    public static String[] mergeUnstructuredUserOptionsToWekaOptions(String userOptions, String defaultOptions) {
-        Map<String, String> optionsMap = new HashMap<>();
-
-        // Parse default options
-        String[] defaultOptionsArray = defaultOptions.split("[,\\s]+");
-        for (int i = 0; i < defaultOptionsArray.length; i++) {
-            if (defaultOptionsArray[i].startsWith("-")) {
-                String key = defaultOptionsArray[i];
-                String value = (i + 1 < defaultOptionsArray.length && !defaultOptionsArray[i + 1].startsWith("-")) ? defaultOptionsArray[++i] : "";
-                optionsMap.put(key, value);
-            }
+    public static String fixNestedOptions(String raw) {
+        if (raw.contains("-A weka.core.EuclideanDistance") && raw.contains("-R first-last")) {
+            // Fix -R by wrapping as part of -A
+            raw = raw.replace("-A weka.core.EuclideanDistance -R first-last", "-A \"weka.core.EuclideanDistance -R first-last\"");
         }
-
-        // Parse user options
-        if (userOptions != null && !userOptions.trim().isEmpty()) {
-            String[] userOptionsArray = userOptions.split(",");
-            for (String option : userOptionsArray) {
-                String[] keyValue = option.split(":");
-                //TODO Maybe must be  >=2
-                if (keyValue.length == 2) {
-                    String key = "-" + keyValue[0];
-                    String value = keyValue[1];
-                    optionsMap.put(key, value); // User options override defaults
-                }
-            }
-        }
-
-        // Convert the map to a list of options
-        List<String> finalOptions = new ArrayList<>();
-        optionsMap.forEach((key, value) -> {
-            finalOptions.add(key);
-            if (!value.isEmpty()) {
-                finalOptions.add(value);
-            }
-        });
-
-        return finalOptions.toArray(new String[0]);
+        return raw;
     }
 
-    public static String formatUserOptionsOptions(String userOptions, String defaultOptions){
-        String[] finalOptionsArr = mergeUnstructuredUserOptionsToWekaOptions(userOptions,defaultOptions);
-        StringBuilder finalOptions = new StringBuilder();
-        // to length -1 in order to not add one extra ',' at the end
-        for(int i=0; i < finalOptionsArr.length -1; i++) {
-            finalOptions.append(finalOptionsArr[i]);
-            finalOptions.append(',');
-        }
-        //adding the last value
-        finalOptions.append(finalOptionsArr[finalOptionsArr.length-1]);
-        return finalOptions.toString();
+
     }
-    public static String[] formatUserOptionsToWekaOptions(String userOptions, String defaultOptions){
-        return formatUserOptionsOptions(userOptions, defaultOptions).split(",");
-    }
-}
+
+
 
 

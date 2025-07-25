@@ -1,10 +1,12 @@
-package com.cloud_ml_app_thesis.service.orchestrator;
+package com.cloud_ml_app_thesis.util.orchestrator;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
 import com.cloud_ml_app_thesis.config.security.AccountDetails;
-import com.cloud_ml_app_thesis.dto.custom_algorithm.AlgorithmParameterDTO;
-import com.cloud_ml_app_thesis.dto.request.training.CustomTrainRequest;
+import com.cloud_ml_app_thesis.dto.request.train.CustomTrainRequest;
+import com.cloud_ml_app_thesis.dto.request.train.TrainingStartRequest;
+import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.dto.train.CustomTrainMetadata;
+import com.cloud_ml_app_thesis.dto.train.PredefinedTrainMetadata;
 import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
@@ -12,46 +14,51 @@ import com.cloud_ml_app_thesis.enumeration.DatasetFunctionalTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
+import com.cloud_ml_app_thesis.exception.BadRequestException;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.service.DatasetService;
 import com.cloud_ml_app_thesis.service.MinioService;
+import com.cloud_ml_app_thesis.service.TaskStatusService;
 import com.cloud_ml_app_thesis.util.AsyncManager;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.cloud_ml_app_thesis.util.TrainingHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class CustomTrainingOrchestrator {
+public class TrainingOrchestrator {
 
     private final TaskStatusRepository taskStatusRepository;
     private final UserRepository userRepository;
     private final DatasetService datasetService;
     private final DatasetConfigurationRepository datasetConfigurationRepository;
     private final BucketResolver bucketResolver;
-    private final CustomAlgorithmRepository algorithmRepository;
-    private final ModelMapper modelMapper;
+    private final CustomAlgorithmRepository customAlgorithmRepository;
+    private final AlgorithmRepository algorithmRepository;
     private final AsyncManager asyncManager;
-    private final ObjectMapper objectMapper;
     private final MinioService minioService;
+    private final AlgorithmConfigurationRepository algorithmConfigurationRepository;
+    private final TrainingHelper trainingHelper;
+    private final TaskStatusService taskStatusService;
 
-    public String handleCustomTrainingRequest(CustomTrainRequest request, AccountDetails accountDetails) {
+    public String handleCustomTrainingRequest(@Valid CustomTrainRequest request, AccountDetails accountDetails) {
         User user = accountDetails.getUser();
-        CustomAlgorithm algorithm = algorithmRepository.findById(request.getAlgorithmId())
+        CustomAlgorithm algorithm = customAlgorithmRepository.findById(request.getAlgorithmId())
                 .orElseThrow(() -> new IllegalArgumentException("Algorithm not found"));
 
         if (!algorithm.getAccessibility().getName().equals(AlgorithmAccessibiltyEnum.PUBLIC)
@@ -61,13 +68,9 @@ public class CustomTrainingOrchestrator {
         String taskId = UUID.randomUUID().toString();
         String username = accountDetails.getUsername();
 
-        taskStatusRepository.save(AsyncTaskStatus.builder()
-                .taskId(taskId)
-                .taskType(TaskTypeEnum.TRAINING)
-                .status(TaskStatusEnum.PENDING)
-                .startedAt(ZonedDateTime.now())
-                .username(username)
-                .build());
+        taskStatusService.initTask(taskId, TaskTypeEnum.TRAINING, username);
+
+        //TODO Πρεπει να χρησημοποιησουμε trainHelper
 
         Dataset dataset = datasetService.uploadDataset(
                 request.getDatasetFile(), user, DatasetFunctionalTypeEnum.TRAIN
@@ -87,15 +90,15 @@ public class CustomTrainingOrchestrator {
         log.info("▶ isEmpty: {}", request.getParametersFile() != null ? request.getParametersFile().isEmpty() : "null");
 
         if (request.getParametersFile() != null && !request.getParametersFile().isEmpty()) {
-            paramsKey = user.getUsername() +  "_" + timestamp + "_" + request.getParametersFile().getOriginalFilename();
+            paramsKey = user.getUsername() + "_" + timestamp + "_" + request.getParametersFile().getOriginalFilename();
             paramsBucket = bucketResolver.resolve(BucketTypeEnum.PARAMETERS);
-            try{
+            try {
                 minioService.uploadObjectToBucket(request.getParametersFile(), paramsBucket, paramsKey);
-            }catch(IOException e){
+            } catch (IOException e) {
                 throw new FileProcessingException("Failed to upload parameters file to PARAMETERS bucket", e);
             }
             log.info("✅ Uploaded parameters file to MinIO: {}/{}", paramsBucket, paramsKey);
-        }else {
+        } else {
             //TODO TEST IT
             log.info("📭 No params.json provided. Will use default algorithm parameters.");
         }
@@ -108,8 +111,43 @@ public class CustomTrainingOrchestrator {
                 paramsKey,
                 paramsBucket
         );
-        asyncManager.trainAsync(taskId, user, metadata);
+        asyncManager.customTrainAsync(taskId, user, metadata);
 
         return taskId;
+    }
+
+    public String handleTrainingRequest(@Valid TrainingStartRequest request, User user) {
+        String taskId = UUID.randomUUID().toString();
+        String username = user.getUsername();
+
+        try {
+            // Init async task
+            taskStatusService.initTask(taskId, TaskTypeEnum.TRAINING, username);
+
+            // Prepare training input
+            TrainingDataInput input = trainingHelper.configureTrainingDataInputByTrainCase(request, user);
+
+            if (input.getErrorResponse() != null) {
+                log.warn("⚠️ Invalid training input [taskId={}, reason={}]", taskId, input.getErrorResponse().getMessage());
+                throw new BadRequestException(input.getErrorResponse().getMessage());
+            }
+
+            PredefinedTrainMetadata metadata = new PredefinedTrainMetadata(
+                    input.getTraining().getId(),
+                    input.getDataset(),
+                    input.getDatasetConfiguration().getId(),
+                    input.getAlgorithmConfiguration().getId()
+            );
+
+            log.info("🚀 Submitting predefined training [taskId={}] for user={}", taskId, username);
+            asyncManager.trainAsync(taskId, user, metadata);
+
+            return taskId;
+
+        } catch (Exception e) {
+            log.error("❌ Failed to handle training [taskId={}]: {}", taskId, e.getMessage(), e);
+            taskStatusService.taskFailed(taskId, e.getMessage());
+            throw new RuntimeException("Failed to handle training [taskId=" + taskId + "]", e);
+        }
     }
 }

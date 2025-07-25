@@ -1,53 +1,55 @@
 package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
-import com.cloud_ml_app_thesis.dto.response.GenericResponse;
-import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
+import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.model.ModelExecution;
-import com.cloud_ml_app_thesis.entity.User;
-import com.cloud_ml_app_thesis.entity.dataset.Dataset;
-import com.cloud_ml_app_thesis.entity.status.ModelExecutionStatus;
-import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
-import com.cloud_ml_app_thesis.enumeration.DatasetFunctionalTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
 import com.cloud_ml_app_thesis.enumeration.status.ModelExecutionStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
-import com.cloud_ml_app_thesis.helper.AuthorizationHelper;
+import com.cloud_ml_app_thesis.repository.AlgorithmTypeRepository;
+import com.cloud_ml_app_thesis.repository.ModelTypeRepository;
 import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.UserRepository;
-import com.cloud_ml_app_thesis.repository.accessibility.ModelAccessibilityRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
-import com.cloud_ml_app_thesis.util.DockerContainerRunner;
+import com.cloud_ml_app_thesis.util.DatasetUtil;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.security.authorization.AuthorizationDeniedException;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 import weka.classifiers.Classifier;
 import weka.clusterers.Clusterer;
 import weka.core.Attribute;
 import weka.core.Instance;
 import weka.core.Instances;
+import weka.core.converters.ConverterUtils;
 
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ModelExecutionService {
 
     private final ModelRepository modelRepository;
@@ -55,119 +57,113 @@ public class ModelExecutionService {
     private final ModelService modelService;
     private final ModelExecutionRepository modelExecutionRepository;
     private final ModelExecutionStatusRepository modelExecutionStatusRepository;
-    private final DatasetService datasetService;
-    private final AuthorizationHelper authorizationHelper;
+    private final TaskStatusService taskStatusService;
     private final BucketResolver bucketResolver;
     private final MinioService minioService;
+    private final TaskStatusRepository taskStatusRepository;
 
     private static final Logger logger = LoggerFactory.getLogger(ModelExecutionService.class);
+    private final ModelTypeRepository modelTypeRepository;
+    private final AlgorithmTypeRepository algorithmTypeRepository;
 
+    @Transactional
+    public void executePredefined(String taskId, Integer modelId, String datasetKey, User user) {
+        log.info("🧠 Starting Weka prediction [taskId={}]", taskId);
 
-    public ByteArrayResource executeModel(UserDetails userDetails, Integer modelId, MultipartFile predictDataset, String targetUsername){
-        //TODO TO CHECK THE SECURITY AUTH LOGIC HERE.
+        AsyncTaskStatus task = taskStatusRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalStateException("Missing task record"));
 
-        logger.info("Starting model execution for model ID: {} and dataset: {}", modelId, predictDataset.getOriginalFilename());
+        Model model = modelRepository.findById(modelId)
+                .orElseThrow(() -> new EntityNotFoundException("Model not found with ID: " + modelId));
 
-        User userRequested = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(()-> new EntityNotFoundException("User requested not found"));
+        if (model.getAccessibility().equals(ModelAccessibilityEnum.PRIVATE) &&
+                !user.getUsername().equals(model.getTraining().getUser().getUsername())) {
+            throw new AuthorizationDeniedException("You are not allowed to run this model");
+        }
 
+        if (!model.getModelType().getName().equals(ModelTypeEnum.PREDEFINED)) {
+            throw new IllegalArgumentException("This model is not Weka-based");
+        }
 
-        Model modelEntity = modelRepository.findById(modelId)
-                .orElseThrow(() -> new EntityNotFoundException("Model not found with id: " + modelId));
+        task.setStatus(TaskStatusEnum.RUNNING);
+        taskStatusRepository.save(task);
 
-        User targetUser = null;
-        boolean isSuperUser = authorizationHelper.isSuperModelUser(userDetails);
+        ModelExecution execution = null;
 
-        //1st we check if the action is from a superuser to execute the model for another user.
-        //Retrieve the target user that is going to execute the model in real - ADMINS and MANAGERS can execute models for other users
-        if(targetUsername != null && !targetUsername.isBlank()){
-            targetUser = userRepository.findByUsername(targetUsername).orElseThrow(()-> new EntityNotFoundException("User requested not found"));
-            if(!isSuperUser) {
-                throw new AuthorizationDeniedException("You are not authorized to execute a model for another user");
+        try {
+            DatasetConfiguration config = model.getTraining().getDatasetConfiguration();
+            AlgorithmTypeEnum type = model.getTraining().getAlgorithmConfiguration().getAlgorithm().getType().getName();
+            AlgorithmType algorithmType = algorithmTypeRepository.findByName(type).orElseThrow(() -> new IllegalStateException("Algorithm type not found"));
+            String predictBucket = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
+            Path csvPath = minioService.downloadObjectToTempFile(predictBucket, datasetKey);
+            // ⬇️ 1. Κατέβασε και διάβασε Instances από MinIO (με μετατροπή, class fix, column filtering)
+            Instances predictInstances = DatasetUtil.loadPredictionInstancesFromCsv(
+                    csvPath,
+                    config,
+                    algorithmType
+            );
+
+            log.info("✅ Parsed prediction dataset with {} instances and {} attributes", predictInstances.numInstances(), predictInstances.numAttributes());
+
+            // ⬇️ 2. Φόρτωσε το εκπαιδευμένο μοντέλο
+            Object modelObject = modelService.loadModel(model.getModelUrl());
+            log.info("✅ Loaded model: {}", modelObject.getClass().getSimpleName());
+
+            // ⬇️ 3. Κάνε prediction ανάλογα το μοντέλο
+            List<String> predictions;
+            if (modelObject instanceof Classifier classifier) {
+                predictions = predictWithClassifier(classifier, predictInstances);
+            } else if (modelObject instanceof Clusterer clusterer) {
+                predictions = predictWithClusterer(clusterer, predictInstances);
+            } else {
+                throw new IllegalStateException("Unsupported model type: " + modelObject.getClass().getName());
             }
-        } else {
-            targetUsername = userRequested.getUsername();
-            targetUser = userRequested;
-        }
 
-        ModelAccessibilityEnum accessibilityEnum = modelEntity.getAccessibility().getName();
+            // ⬇️ 4. Αποθήκευση αποτελεσμάτων
+            execution = new ModelExecution();
+            execution.setModel(model);
+            execution.setExecutedByUser(user);
+            execution.setExecutedAt(ZonedDateTime.now());
+            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS).orElseThrow());
+            modelExecutionRepository.save(execution);
 
-        //2nd check if the Model is private, so Only the owner or a superuser can execute it
-        // in case of not owner AND superuser we return unauthorized, otherwise continue
-        if(accessibilityEnum == ModelAccessibilityEnum.PRIVATE){
-            if(!isOwner(targetUsername, modelEntity.getTraining().getUser().getUsername()) && !isSuperUser){
-                throw new AuthorizationDeniedException("You are not authorized to execute a model for another user");
+            // ➕ Προσθήκη predictions στη μορφή CSV
+            byte[] resultFile = DatasetUtil.replaceQuestionMarksWithPredictionResultsAsCSV(predictInstances, predictions);
+
+            // ☁️ Upload result to MinIO
+            String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
+            String resultKey = user.getUsername() + "_" + timestamp + "_prediction.csv";
+            String resultBucket = bucketResolver.resolve(BucketTypeEnum.PREDICTION_RESULTS);
+            try (InputStream in = new ByteArrayInputStream(resultFile)) {
+                minioService.uploadToMinio(in, resultBucket, resultKey, resultFile.length, "text/csv");
             }
-        }
 
-        ModelExecution modelExecution = new ModelExecution();
+            String minioUrl = modelService.generateMinioUrl(resultBucket, resultKey);
+            execution.setPredictionResult(minioUrl);
+            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FINISHED).orElseThrow());
+            modelExecutionRepository.save(execution);
 
-        ModelExecutionStatus inProgressStatus = modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS)
-                        .orElseThrow(() -> new EntityNotFoundException("IN PROGRESS status not found"));
-        modelExecution.setStatus(inProgressStatus);
+            // ✔️ Task ολοκληρώθηκε
+            taskStatusService.completeTask(taskId);
+            task.setExecutionId(execution.getId());
+            taskStatusRepository.save(task);
 
-        modelExecution = modelExecutionRepository.save(modelExecution);
+            log.info("✅ Weka prediction completed [taskId={}], result uploaded: {}", taskId, minioUrl);
 
-        Instances predictDatasetInstances = null;
-        try {
-            predictDatasetInstances = datasetService.wekaFileToInstances(predictDataset);
         } catch (Exception e) {
-            saveModelOnFailure(modelExecution);
-            throw new RuntimeException(e);
+            log.error("❌ Weka prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);
+            taskStatusService.taskFailed(taskId, e.getMessage());
+
+            if (execution != null) {
+                execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED).orElse(null));
+                modelExecutionRepository.save(execution);
+            }
+
+            taskStatusRepository.save(task);
+            throw new RuntimeException("Prediction failed: " + e.getMessage(), e);
         }
-
-        List<String> predictions = null;
-        try {
-            predictions = predict(modelEntity.getModelUrl(), predictDatasetInstances);
-        } catch (Exception e) {
-            saveModelOnFailure(modelExecution);
-            throw new RuntimeException(e);
-        }
-
-        GenericResponse<Dataset> response = datasetService.uploadDataset(predictDataset, userRequested, DatasetFunctionalTypeEnum.PREDICT);
-
-        Dataset dataset = response.getDataHeader();
-
-        // Save execution in DB
-        modelExecution.setModel(modelRepository.findById(modelId).orElseThrow());
-        modelExecution.setExecutedAt(LocalDateTime.now());
-        modelExecution.setPredictionResult(predictions.toString());
-        modelExecution.setDataset(dataset);
-
-        ByteArrayResource modelPredictions = null;
-        try {
-            modelPredictions = new ByteArrayResource(replaceQuestionMarksWithPredictionResults(predictDatasetInstances, predictions));
-        } catch (Exception e) {
-            saveModelOnFailure(modelExecution);
-            throw new RuntimeException(e);
-        }
-
-        ModelExecutionStatus statusFinished = modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FINISHED)
-                        .orElseThrow(() -> new EntityNotFoundException("Model executions FINISHED status could not be found"));
-        modelExecution.setStatus(statusFinished);
-        modelExecutionRepository.save(modelExecution);
-
-        return modelPredictions;
     }
 
-    public ByteArrayResource getPredictionResults(Integer modelExecutionId, User user) {
-        ModelExecution execution = modelExecutionRepository
-                .findById(modelExecutionId).orElseThrow(()-> new EntityNotFoundException("Model execution " + modelExecutionId + " not found"));
-
-         // Already saved during initial prediction
-        Instances predictInstances = null;
-        try {
-            predictInstances = datasetService.loadPredictionDataset(execution.getDataset());
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        byte[] result = null;
-        try {
-            result = replaceQuestionMarksWithPredictionResults(predictInstances,  Arrays.asList(execution.getPredictionResult().split(",")));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        return new ByteArrayResource(result);
-    }
 
     public ByteArrayResource getExecutionResultsFile(Integer modelExecutionId, User user) {
         logger.debug("📥 Fetching result for execution id = {} by user={}", modelExecutionId, user.getUsername());
@@ -201,37 +197,51 @@ public class ModelExecutionService {
         return new ByteArrayResource(resultBytes);
     }
 
-    public List<String> predict(String modelMinioUri, Instances predictDatasetInstances) throws Exception {
-        Object model = modelService.loadModel(modelMinioUri);
-        logger.info("Model loaded: {}", model.getClass().getName());
-
-        if (model instanceof Classifier) {
-            logger.info("Loading classifier...");
-            return predictWithClassifier((Classifier) model, predictDatasetInstances);
-        } else if (model instanceof Clusterer) {
-            return predictWithClusterer((Clusterer) model, predictDatasetInstances);
-        } else {
-            logger.error("Unsupported model type: {}", model.getClass().getName());
-            throw new RuntimeException("Unsupported model type");
-        }
-    }
-
     private List<String> predictWithClassifier(Classifier classifier, Instances dataset) throws Exception {
+        logger.info("⚙️ [Classifier] Dataset info before prediction:");
+        logger.info("   ➤ Number of instances: {}", dataset.numInstances());
+        logger.info("   ➤ Number of attributes: {}", dataset.numAttributes());
+        logger.info("   ➤ Class index: {}", dataset.classIndex());
         dataset.setClassIndex(dataset.numAttributes() - 1);
-        Attribute classAttribute = dataset.classAttribute(); // Get the class attribute
+        Attribute classAttribute = dataset.classAttribute();
+
+        if (classAttribute != null) {
+            logger.info("   ➤ Class attribute name: {}", classAttribute.name());
+            logger.info("   ➤ Class attribute isNominal: {}", classAttribute.isNominal());
+            logger.info("   ➤ Class attribute isNumeric: {}", classAttribute.isNumeric());
+
+            if (classAttribute.isNominal()) {
+                for (int i = 0; i < classAttribute.numValues(); i++) {
+                    logger.info("   ➤ Class nominal value [{}]: {}", i, classAttribute.value(i));
+                }
+            }
+        } else {
+            logger.warn("   ⚠️ Class attribute is NULL!");
+        }
+
         logger.info("Performing prediction with classifier on dataset with {} instances", dataset.numInstances());
+
         List<String> predictions = new ArrayList<>();
         for (int i = 0; i < dataset.numInstances(); i++) {
             try {
                 double prediction = classifier.classifyInstance(dataset.instance(i));
-                String predictedLabel = classAttribute.value((int) prediction); // Get the class label
-                logger.info("Instance {}: Predicted value: {}", i, predictedLabel);
-                predictions.add(predictedLabel);
+
+                String predictedValue;
+                if (classAttribute.isNominal()) {
+                    predictedValue = classAttribute.value((int) prediction); // Classification
+                } else {
+                    predictedValue = String.valueOf(prediction); // Regression
+                }
+
+                logger.info("Instance {}: Predicted value: {}", i, predictedValue);
+                predictions.add(predictedValue);
+
             } catch (Exception e) {
                 logger.error("Error predicting instance {}: {}", i, e.getMessage(), e);
-                throw e; // Re-throw the exception after logging it
+                throw e;
             }
         }
+
         logger.info("Predictions completed successfully. Total predictions: {}", predictions.size());
         return predictions;
     }
@@ -254,30 +264,26 @@ public class ModelExecutionService {
         return predictions;
     }
 
-    private byte[] replaceQuestionMarksWithPredictionResults(Instances predictInstances, List<String> predictions) throws Exception {
-        predictInstances.setClassIndex(predictInstances.numAttributes() - 1);
 
-        for (int i = 0; i < predictInstances.numInstances(); i++) {
-            Instance instance = predictInstances.instance(i);
-            instance.setClassValue(predictions.get(i));
-        }
-        // Convert Instances to ARFF format string
-        String updatedArffString = predictInstances.toString();
-        return updatedArffString.getBytes(StandardCharsets.UTF_8);
+
+public ByteArrayResource getPredictionResults(Integer modelExecutionId, User user) {
+    ModelExecution execution = modelExecutionRepository
+            .findById(modelExecutionId).orElseThrow(()-> new EntityNotFoundException("Model execution " + modelExecutionId + " not found"));
+
+    // Already saved during initial prediction
+    Instances predictInstances = null;
+    try {
+        predictInstances = DatasetUtil.loadPredictionDataset(execution.getDataset());
+    } catch (Exception e) {
+        throw new RuntimeException(e);
     }
-
-    private void saveModelOnFailure(ModelExecution modelExecution){
-        ModelExecutionStatus statusFailed = modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED)
-                .orElseThrow(() -> new EntityNotFoundException("Model executions FINISHED status could not be found"));
-
-        modelExecution.setStatus(statusFailed);
-        modelExecutionRepository.save(modelExecution);
+    byte[] result = null;
+    try {
+        result = DatasetUtil.replaceQuestionMarksWithPredictionResultsAsCSV(predictInstances,  Arrays.asList(execution.getPredictionResult().split(",")));
+    } catch (Exception e) {
+        throw new RuntimeException(e);
     }
-
-    private boolean isOwner(String targetUsername, String ownerUsername){
-        return targetUsername.equals(ownerUsername);
-    }
-
-
+    return new ByteArrayResource(result);
+}
 
 }

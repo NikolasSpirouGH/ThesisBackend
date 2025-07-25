@@ -3,19 +3,18 @@ package com.cloud_ml_app_thesis.service;
 import com.cloud_ml_app_thesis.config.BucketResolver;
 import com.cloud_ml_app_thesis.dto.train.CustomTrainMetadata;
 import com.cloud_ml_app_thesis.entity.*;
-import com.cloud_ml_app_thesis.entity.AlgorithmType;
+import com.cloud_ml_app_thesis.entity.ModelType;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
 import com.cloud_ml_app_thesis.entity.Training;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
-import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
-import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.*;
-import com.cloud_ml_app_thesis.repository.AlgorithmTypeRepository;
+import com.cloud_ml_app_thesis.repository.ModelTypeRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
 import com.cloud_ml_app_thesis.util.DockerContainerRunner;
@@ -56,17 +55,18 @@ public class CustomTrainingService {
     private final DockerContainerRunner dockerCommandRunner;
     private final TrainingStatusRepository trainingStatusRepository;
     private final TaskStatusRepository taskStatusRepository;
-    private final AlgorithmTypeRepository algorithmTypeRepository;
+    private final ModelTypeRepository modelTypeRepository;
     private final DatasetConfigurationRepository datasetConfigurationRepository;
     private final ModelRepository modelRepository;
     private final AlgorithmConfigurationRepository algorithmConfigurationRepository;
     private final CustomAlgorithmConfigurationRepository customAlgorithmConfigurationRepository;
     private final AlgorithmImageRepository algorithmImageRepository;
+    private final TaskStatusService taskStatusService;
     ObjectMapper mapper = new ObjectMapper();
 
 
     @Transactional
-    public void train(String taskId, User user, CustomTrainMetadata metadata) {
+    public void trainCustom(String taskId, User user, CustomTrainMetadata metadata) {
         log.info("🧠 Starting training [taskId={}] for user={}", taskId, user.getUsername());
 
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
@@ -77,9 +77,18 @@ public class CustomTrainingService {
         Path dataDir = null;
         Path outputDir = null;
 
+        Training training ;
+        
         try {
             // 1. Validate access
             CustomAlgorithm algorithm = customAlgorithmRepository.findById(metadata.algorithmId()).orElseThrow(() -> new IllegalStateException("Custom algorithm not found"));
+
+            TrainingStatus running = trainingStatusRepository.findByName(TrainingStatusEnum.RUNNING)
+                    .orElseThrow(() -> new IllegalStateException("TrainingStatus RUNNING not found"));
+            training = new Training();
+            training.setStartedDate(ZonedDateTime.now());
+            training.setStatus(running);
+            trainingRepository.save(training);
 
             if (!algorithm.getAccessibility().getName().equals(AlgorithmAccessibiltyEnum.PUBLIC)
                     && !algorithm.getOwner().getUsername().equals(user.getUsername())) {
@@ -225,12 +234,12 @@ public class CustomTrainingService {
 
 
             //TODO WE HAVE TO IMPLEMENT THE LOGIC OF ALGORITHM_CONFIGURATION
-            Training training = Training.builder()
+            //TODO WE HAVE TO CREATE TRAINING AT THE START OF THIS METHOD
+             training = Training.builder()
                     .customAlgorithmConfiguration(savedConfig)
                     .user(user)
                     .datasetConfiguration(datasetConfig)
                     .status(completed)
-                    .startedDate(ZonedDateTime.now())
                     .finishedDate(ZonedDateTime.now())
                     .results(Files.readString(metricsFile.toPath()))
                     .build();
@@ -239,7 +248,7 @@ public class CustomTrainingService {
 
 
             // 10. Save model entity
-            AlgorithmType customType = algorithmTypeRepository.findByName(AlgorithmTypeEnum.CUSTOM)
+            ModelType customType = modelTypeRepository.findByName(ModelTypeEnum.CUSTOM)
                     .orElseThrow(() -> new IllegalStateException("AlgorithmType CUSTOM not found"));
 
             modelService.saveModel(training, modelUrl, metricsUrl, customType, user);
@@ -251,10 +260,7 @@ public class CustomTrainingService {
             trainingRepository.save(training);
 
             // 11. Complete async task
-            task.setStatus(TaskStatusEnum.COMPLETED);
-            task.setTaskType(TaskTypeEnum.TRAINING);
-            task.setFinishedAt(ZonedDateTime.now());
-            task.setResultUrl(modelUrl);
+            taskStatusService.completeTask(taskId);
             task.setModelId(model.getId());
             task.setTrainingId(model.getTraining().getId());
             taskStatusRepository.save(task);
@@ -263,9 +269,7 @@ public class CustomTrainingService {
 
         } catch (Exception e) {
             log.error("❌ Training failed [taskId={}]: {}", taskId, e.getMessage(), e);
-            task.setStatus(TaskStatusEnum.FAILED);
-            task.setFinishedAt(ZonedDateTime.now());
-            taskStatusRepository.save(task);
+            taskStatusService.taskFailed(taskId, e.getMessage());
             throw new RuntimeException("Training failed", e);
         } finally {
             try {

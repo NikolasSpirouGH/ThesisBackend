@@ -7,8 +7,9 @@ import com.cloud_ml_app_thesis.entity.CustomAlgorithmImage;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.model.ModelExecution;
-import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
 import com.cloud_ml_app_thesis.enumeration.status.ModelExecutionStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
@@ -21,6 +22,7 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -30,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.UUID;
 
@@ -46,6 +49,7 @@ public class CustomPredictionService {
     private final ModelExecutionRepository modelExecutionRepository;
     private final ModelService modelService;
     private final DockerContainerRunner dockerContainerRunner;
+    private final TaskStatusService taskStatusService;
 
 
     @Transactional
@@ -66,10 +70,12 @@ public class CustomPredictionService {
             Model model = modelRepository.findById(modelId)
                     .orElseThrow(() -> new EntityNotFoundException("Model with ID " + modelId + " not found"));
 
-            if (!model.getAlgorithmType().getName().equals(AlgorithmTypeEnum.CUSTOM)) {
-                task.setStatus(TaskStatusEnum.FAILED);
-                task.setErrorMessage("Not a custom algorithm");
-                task.setFinishedAt(ZonedDateTime.now());
+            if(model.getAccessibility().equals(ModelAccessibilityEnum.PRIVATE) && !user.getUsername().equals(model.getTraining().getUser().getUsername())) {
+                throw new AuthorizationDeniedException("You are not allowed to run this model");
+            }
+
+            if (!model.getModelType().getName().equals(ModelTypeEnum.CUSTOM)) {
+                taskStatusService.taskFailed(taskId, "This model is not Docker Based");
                 throw new IllegalArgumentException("This model is not Docker-based");
             }
 
@@ -117,14 +123,15 @@ public class CustomPredictionService {
             execution = new ModelExecution();
             execution.setModel(model);
             execution.setExecutedByUser(user);
-            execution.setExecutedAt(LocalDateTime.now());
+            execution.setExecutedAt(ZonedDateTime.now());
             execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS)
                     .orElseThrow(() -> new EntityNotFoundException("Execution status not found")));
 
             modelExecutionRepository.save(execution);
 
+            String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
             // 8. Upload output σε MinIO
-            String predKey = UUID.randomUUID() + "-" + predictedFile.getName();
+            String predKey = user.getUsername() + "_" + timestamp + "_" + predictedFile.getName();
             String predBucket = bucketResolver.resolve(BucketTypeEnum.PREDICTION_RESULTS);
 
             try (InputStream in = new FileInputStream(predictedFile)) {
@@ -139,9 +146,7 @@ public class CustomPredictionService {
             modelExecutionRepository.save(execution);
 
             // 9. Ενημέρωση task
-            task.setStatus(TaskStatusEnum.COMPLETED);
-            task.setFinishedAt(ZonedDateTime.now());
-            task.setResultUrl(resultUrl);
+            taskStatusService.completeTask(taskId);
             log.info("Execution id inside model execution service: {}", execution.getId());
             task.setExecutionId(execution.getId());
             taskStatusRepository.save(task);
@@ -150,8 +155,7 @@ public class CustomPredictionService {
 
         } catch (Exception e) {
             log.error("❌ Prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);
-            task.setStatus(TaskStatusEnum.FAILED);
-            task.setFinishedAt(ZonedDateTime.now());
+            taskStatusService.taskFailed(taskId, e.getMessage());
             if (execution != null) {
                 execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED)
                         .orElse(null));
@@ -161,4 +165,7 @@ public class CustomPredictionService {
             throw new RuntimeException("Prediction failed: " + e.getMessage(), e);
         }
     }
+
 }
+
+

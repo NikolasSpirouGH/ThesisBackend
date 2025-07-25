@@ -31,8 +31,6 @@ public class AsyncTaskStatus {
 
     private String errorMessage;
 
-    private String resultUrl; // For prediction output or trained model URL
-
     private ZonedDateTime startedAt;
     private ZonedDateTime finishedAt;
 

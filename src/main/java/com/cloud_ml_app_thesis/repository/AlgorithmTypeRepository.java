@@ -9,5 +9,7 @@ import java.util.Optional;
 
 @Repository
 public interface AlgorithmTypeRepository extends JpaRepository<AlgorithmType, Integer> {
-    Optional<AlgorithmType> findByName(AlgorithmTypeEnum algorithmTypeEnum);
+
+
+    Optional<AlgorithmType> findByName(AlgorithmTypeEnum typeEnum);
 }

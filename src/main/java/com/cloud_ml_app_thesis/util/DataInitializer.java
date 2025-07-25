@@ -7,6 +7,7 @@ import com.cloud_ml_app_thesis.entity.accessibility.DatasetAccessibility;
 import com.cloud_ml_app_thesis.entity.accessibility.ModelAccessibility;
 import com.cloud_ml_app_thesis.entity.status.*;
 import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.UserRoleEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.DatasetAccessibilityEnum;
@@ -16,8 +17,8 @@ import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.repository.accessibility.AlgorithmAccessibilityRepository;
 import com.cloud_ml_app_thesis.repository.accessibility.DatasetAccessibilityRepository;
 import com.cloud_ml_app_thesis.repository.accessibility.ModelAccessibilityRepository;
-import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.status.*;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.reflections.Reflections;
@@ -35,6 +36,7 @@ import weka.core.OptionHandler;
 
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -49,11 +51,12 @@ public class DataInitializer implements CommandLineRunner {
     private final ModelStatusRepository modelStatusRepository;
     private final DatasetAccessibilityRepository datasetAccessibilityRepository;
     private final ModelAccessibilityRepository modelAccessibilityRepository;
+    private final AlgorithmTypeRepository algorithmTypeRepository;
 
     private final String adminPassword = "adminPassword"; // Replace with actual password retrieval
     private final String userPassword = "userPassword"; // Replace with actual password retrieval
     private final Argon2PasswordEncoder passwordEncoder;
-    private final AlgorithmTypeRepository algorithmTypeRepository;
+    private final ModelTypeRepository modelTypeRepository;
     private final AlgorithmAccessibilityRepository algorithmAccessibilityRepository;
     private final ModelExecutionStatusRepository modelExecutionStatusRepository;
     private final CategoryRequestStatusRepository categoryRequestStatusRepository;
@@ -67,6 +70,7 @@ public class DataInitializer implements CommandLineRunner {
         initializeAlgorithms();
         initializeUserRoles();
         initializeModelAccessibilities();
+        initializeModelTypes();
         initializeAlgorithmTypes();
         initializeAlgorithmAccessibilities();
         initializeModelExecutionStatuses();
@@ -74,6 +78,15 @@ public class DataInitializer implements CommandLineRunner {
         initializeCategoriesStatuses();
         initializeCategories();
 
+    }
+
+    private void initializeAlgorithmTypes() {
+        Arrays.stream(AlgorithmTypeEnum.values()).forEach(type -> {
+            algorithmTypeRepository.findByName(type).orElseGet(() -> {
+                System.out.println("Initializing AlgorithmType " + type);
+                return algorithmTypeRepository.save(new AlgorithmType(type));
+            });
+        });
     }
 
     private void initializeCategoriesStatuses() {
@@ -121,11 +134,11 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private void initializeAlgorithmTypes() {
-        Arrays.stream(AlgorithmTypeEnum.values()).forEach(type -> {
-            algorithmTypeRepository.findByName(type).orElseGet(() -> {
-                System.out.println("Initializing AlgorithmType " + type);
-                return algorithmTypeRepository.save(new AlgorithmType(type));
+    private void initializeModelTypes() {
+        Arrays.stream(ModelTypeEnum.values()).forEach(type -> {
+            modelTypeRepository.findByName(type).orElseGet(() -> {
+                System.out.println("Initializing Model type " + type);
+                return modelTypeRepository.save(new ModelType(type));
             });
         });
     }
@@ -251,7 +264,6 @@ public class DataInitializer implements CommandLineRunner {
     }
 
 
-
     private void initializeAlgorithms() {
         Reflections reflections = new Reflections(new ConfigurationBuilder()
                 .setUrls(ClasspathHelper.forPackage("weka.classifiers"))
@@ -320,16 +332,29 @@ public class DataInitializer implements CommandLineRunner {
                         optionsDescrStr.delete(optionsDescrStr.length() - 2, optionsDescrStr.length()); // Remove trailing "->"
                     }
 
-                    String defaultOptionsFinal = Arrays.toString(optionsDefaultArr)
-                            .replace("--, ", "")
-                            .replace("[--, ", "")
-                            .replace("--]", "")
-                            .replaceAll("[\\[\\]]", ""); // Clean brackets
+                    String defaultOptionsFinal = String.join(" ", optionsDefaultArr);
 
-                    Algorithm algorithm = new Algorithm(null, className, classInfo.replaceAll("[\\t\\n]", ""),
+                    AlgorithmTypeEnum typeEnum;
+                    if (Clusterer.class.isAssignableFrom(cls)) {
+                        typeEnum = AlgorithmTypeEnum.CLUSTERING;
+                    } else if (Classifier.class.isAssignableFrom(cls)) {
+                        typeEnum = AlgorithmTypeEnum.CLASSIFICATION;
+                    } else {
+                        throw new IllegalArgumentException("❌ Unknown algorithm type: " + cls.getName());
+                    }
+
+                    AlgorithmType algorithmType = algorithmTypeRepository.findByName(typeEnum)
+                            .orElseThrow(() -> new EntityNotFoundException("Algorithm Type not found: " + typeEnum));
+
+                    Algorithm algorithm = new Algorithm(
+                            null,
+                            className,
+                            classInfo.replaceAll("[\\t\\n]", ""),
+                            algorithmType,
                             optionsStr.toString().replaceAll("[\\t\\n]", "").replace(",,", ","),
                             optionsDescrStr.toString().replaceAll("[\\t\\n]", "").replace("->->", "->"),
-                            defaultOptionsFinal, cls.getName());
+                            defaultOptionsFinal,
+                            cls.getName());
                     algorithmInfos.add(algorithm);
                 }
             } catch (Exception e) {

@@ -7,12 +7,11 @@ import weka.core.Instances;
 @NoArgsConstructor
 @Setter
 @Getter
+@Builder
 public class TrainingDataInput {
     private Training training;
-    private Instances dataset; // OK
-    private String filename; // OK
-    private DatasetConfiguration datasetConfiguration; // OK
-//    private String algorithmClassName; //commented because we can do algorithmConfiguration.getAlgorithm().getClassName();
-    private AlgorithmConfiguration algorithmConfiguration; // OK
+    private Instances dataset;
+    private DatasetConfiguration datasetConfiguration;
+    private AlgorithmConfiguration algorithmConfiguration;
     private GenericResponse errorResponse = null;
 }

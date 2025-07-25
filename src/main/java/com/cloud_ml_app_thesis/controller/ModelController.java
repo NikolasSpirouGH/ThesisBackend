@@ -4,6 +4,7 @@ import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.service.ModelService;
+import com.cloud_ml_app_thesis.service.VisualizationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -13,6 +14,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -28,6 +32,90 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 public class ModelController {
 
     private final ModelService modelService;
+    private final VisualizationService visualizationService;
+
+
+    @GetMapping("/metrics/{modelId}")
+    @Operation(summary = "Fetch metris with model")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "202", description = "Training metrics fetched successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request data"),
+            @ApiResponse(responseCode = "500", description = "Training metrics failed to fetch")
+    })
+    public ResponseEntity<ByteArrayResource> getTrainingMetrics(@PathVariable Integer modelId, @AuthenticationPrincipal AccountDetails accountDetails) {
+
+        ByteArrayResource metricsFile = modelService.getMetricsFile(modelId, accountDetails.getUser());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=metrics-" + modelId + ".json")
+                .contentType(MediaType.APPLICATION_JSON)
+                .contentLength(metricsFile.contentLength())
+                .body(metricsFile);
+    }
+
+    //Classification
+    @Operation(summary = "Model Evaluation Chart", description = "Returns PNG bar chart with accuracy, precision, recall, F1 from metrics.json")
+    @GetMapping(value = "/metrics-bar/model/{modelId}", produces = MediaType.IMAGE_PNG_VALUE)
+    public ResponseEntity<ByteArrayResource> getMetricsBarChart(@PathVariable Integer modelId, @AuthenticationPrincipal AccountDetails accountDetails) {
+        return ResponseEntity.ok(visualizationService.generateBarChartFromMetricsJson(modelId, accountDetails.getUser()));
+    }
+
+    //Classification
+    @Operation(summary = "Confusion Matrix", description = "Returns PNG of confusion matrix chart")
+    @GetMapping(value = "/metrics-confusion/model/{id}", produces = MediaType.IMAGE_PNG_VALUE)
+    public ResponseEntity<ByteArrayResource> getConfusionMatrixChart(
+            @PathVariable("id") Integer id,
+            @AuthenticationPrincipal AccountDetails user) {
+
+        //We have to check if model has been produced by Classification and no Regression
+        ByteArrayResource image = visualizationService.generateConfusionMatrixChart(id, user.getUser());
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_PNG)
+                .body(image);
+    }
+    //Regression
+    @GetMapping(value = "/metrics-scatter/model/{id}", produces = MediaType.IMAGE_PNG_VALUE)
+    @Operation(summary = "Regression Scatter Plot", description = "Returns PNG of actual vs predicted plot for regression model")
+    public ResponseEntity<ByteArrayResource> getRegressionScatterPlot(
+            @PathVariable("id") Integer id,
+            @AuthenticationPrincipal AccountDetails user) {
+        ByteArrayResource image = visualizationService.generateRegressionScatterPlot(id, user.getUser());
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(image);
+    }
+
+    @GetMapping(value = "/metrics-residual/model/{id}", produces = MediaType.IMAGE_PNG_VALUE)
+    @Operation(summary = "Regression Scatter Plot", description = "Returns PNG of residuals vs predicted plot for regression model")
+    public ResponseEntity<ByteArrayResource> getResidualPlot(
+            @PathVariable("id") Integer id,
+            @AuthenticationPrincipal AccountDetails user) {
+        ByteArrayResource image = visualizationService.generateResidualPlot(id, user.getUser());
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(image);
+    }
+
+    //Clusterer
+    @Operation(summary = "Cluster Sizes Chart", description = "Returns PNG bar chart with the size of each cluster")
+    @GetMapping(value = "/metrics-cluster-sizes/model/{modelId}", produces = MediaType.IMAGE_PNG_VALUE)
+    public ResponseEntity<ByteArrayResource> getClusterSizesChart(
+            @PathVariable("modelId") Integer modelId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        ByteArrayResource image = visualizationService.generateClusterSizeChart(modelId, accountDetails.getUser());
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(image);
+    }
+
+    @GetMapping("/metrics-scatter-cluster/model/{modelId}")
+    @Operation(summary = "📊 Cluster scatter plot",
+            description = "Returns a scatter plot showing instances grouped by their assigned cluster based on the training dataset and metrics.json")
+    public ResponseEntity<ByteArrayResource> getClusterScatterPlot(
+            @PathVariable("modelId") Integer modelId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+
+        ByteArrayResource resource = visualizationService.generateClusterScatterPlot(modelId, accountDetails.getUser());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=cluster_scatter_plot.png")
+                .contentType(MediaType.IMAGE_PNG)
+                .body(resource);
+    }
 
 
     @Operation(
@@ -59,15 +147,15 @@ public class ModelController {
             @ApiResponse(responseCode = "404", description = "Training or category not found",
                     content = @Content)
     })
-    @PostMapping("/{trainingId}/model")
+    @PostMapping("/{modelId}/model")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<Integer>> finalizeModelFromTraining(
-            @PathVariable Integer trainingId,
+            @PathVariable Integer modelId,
             @RequestBody ModelFinalizeRequest request,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
-        log.info("🔐 Finalizing model from trainingId={} by user={}", trainingId, userDetails.getUsername());
-        Integer modelId = modelService.finalizeModel(trainingId, userDetails, request);
+        log.info("🔐 Finalizing model from trainingId={} by user={}", modelId, userDetails.getUsername());
+        modelService.finalizeModel(modelId, userDetails, request);
         return ResponseEntity.ok(new GenericResponse<>(modelId, null, "✅ Model finalized successfully", null));
     }
 

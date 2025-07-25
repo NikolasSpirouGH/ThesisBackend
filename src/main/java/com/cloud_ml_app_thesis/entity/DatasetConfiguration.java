@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -16,6 +17,7 @@ import java.time.ZonedDateTime;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 @Table(name="dataset_configurations")
 public class DatasetConfiguration {
 
@@ -72,8 +74,8 @@ public class DatasetConfiguration {
     public void setBasicAttributesColumns(String columns){
         this.basicAttributesColumns = columns;
         if(ValidationUtil.stringExists(columns) || ValidationUtil.stringExists(this.targetColumn)){
-                this.status = DatasetConfigurationStatusEnum.DEFAULT;
-                return;
+            this.status = DatasetConfigurationStatusEnum.DEFAULT;
+            return;
         } else {
             this.status = DatasetConfigurationStatusEnum.CUSTOM;
         }

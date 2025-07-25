@@ -10,7 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class CustomExecuteRequest {
+public class ExecuteRequest {
 
     @Schema(description = "Model ID", example = "5", requiredMode = Schema.RequiredMode.REQUIRED)
     private Integer modelId;
