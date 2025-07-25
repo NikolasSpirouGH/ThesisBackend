@@ -17,6 +17,7 @@ public class AlgorithmType {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
+
     @Column(name = "name")
     @Enumerated(EnumType.STRING)
     private AlgorithmTypeEnum name;
