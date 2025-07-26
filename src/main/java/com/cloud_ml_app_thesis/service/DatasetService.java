@@ -6,11 +6,13 @@ import com.cloud_ml_app_thesis.dto.request.dataset.DatasetCreateRequest;
 import com.cloud_ml_app_thesis.dto.request.dataset.DatasetSearchRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.dto.response.Metadata;
+import com.cloud_ml_app_thesis.entity.AlgorithmType;
 import com.cloud_ml_app_thesis.entity.Category;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.accessibility.DatasetAccessibility;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
+import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.DatasetFunctionalTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.DatasetAccessibilityEnum;
@@ -24,6 +26,7 @@ import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.repository.TrainingRepository;
 import com.cloud_ml_app_thesis.repository.UserRepository;
 import com.cloud_ml_app_thesis.specification.DatasetSpecification;
+import com.cloud_ml_app_thesis.util.DatasetUtil;
 import com.cloud_ml_app_thesis.util.FileUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.GetObjectArgs;
@@ -68,6 +71,8 @@ import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
+
+import static com.cloud_ml_app_thesis.util.DatasetUtil.resolveDatasetMinioInfo;
 
 @Service
 @RequiredArgsConstructor
@@ -242,6 +247,44 @@ public class DatasetService {
                         .collect(Collectors.toList()))
                         .orElse(Collections.emptyList());
         return new GenericResponse<List<String>>(datasetUrls, null, null, new Metadata());
+    }
+
+    public Instances loadPredictionInstancesFromCsv(Path csvPath,
+                                                           DatasetConfiguration config,
+                                                           AlgorithmType algoType) throws Exception {
+        logger.info("📥 Loading CSV file from: {}", csvPath);
+
+        // 1. Αν είναι .csv → μετατροπή σε .arff
+        String arffPath = DatasetUtil.csvToArff(Files.newInputStream(csvPath), csvPath.getFileName().toString());
+        logger.info("🔄 Converted to ARFF: {}", arffPath);
+
+        // 2. Φόρτωσε ARFF ως Instances
+        Instances data = new ConverterUtils.DataSource(arffPath).getDataSet();
+        logger.info("✅ Loaded ARFF with {} instances and {} attributes", data.numInstances(), data.numAttributes());
+
+        // 3. Αν είναι classification, διόρθωσε το class attribute (αν είναι STRING)
+        if (algoType.getName().equals(AlgorithmTypeEnum.CLASSIFICATION)) {
+            String classAttrName = DatasetUtil.resolveClassAttributeName(config, data);
+
+            String[] minioPathParts = resolveDatasetMinioInfo(config.getDataset());
+
+            String bucketName = minioPathParts[0];
+            String objectName = minioPathParts[1];
+            logger.info("Bucket Name: {}", bucketName);
+            logger.info("Object Name: {}", objectName);
+
+            InputStream datasetStream =  minioService.loadObjectAsInputStream(bucketName, objectName);
+            List<String> classValues = DatasetUtil.extractClassValuesFromTrainingDataset(config, datasetStream, objectName);
+            DatasetUtil.forceNominalClassIfNeeded(data, classAttrName, classValues);
+        }
+
+        // 4. Επέλεξε τα σωστά attributes
+        return DatasetUtil.selectColumns(
+                data,
+                config.getBasicAttributesColumns(),
+                config.getTargetColumn(),
+                1 // prediction mode
+        );
     }
 
 }

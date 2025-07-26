@@ -1,11 +1,15 @@
 package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
+import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
 import com.cloud_ml_app_thesis.entity.User;
+import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
 import com.cloud_ml_app_thesis.exception.BadRequestException;
+import com.cloud_ml_app_thesis.repository.DatasetConfigurationRepository;
+import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.util.AlgorithmUtil;
 import com.cloud_ml_app_thesis.util.DatasetUtil;
@@ -25,6 +29,7 @@ import weka.core.Instances;
 import java.awt.*;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 import java.util.List;
 import java.util.stream.IntStream;
@@ -38,6 +43,7 @@ public class VisualizationService {
     private final MinioService minioService;
     private final BucketResolver bucketResolver;
     private final DatasetService datasetService;
+    private final DatasetConfigurationRepository datasetConfigurationRepository;
 
     //classification
     public ByteArrayResource generateBarChartFromMetricsJson(Integer modelId, User user) {
@@ -48,8 +54,11 @@ public class VisualizationService {
             throw new AuthorizationDeniedException("User not authorized to train this algorithm");
         }
         try {
-            Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(
-                    model.getTraining().getDatasetConfiguration());
+            DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
+            String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+            InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
+
+            Instances data  = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
 
             log.info("Dataset in virtualization: {}", data);
 
@@ -123,9 +132,11 @@ public class VisualizationService {
         }
 
         try {
-            Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(
-                    model.getTraining().getDatasetConfiguration());
+            DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
+            String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+            InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
 
+            Instances data  = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
             log.info("Dataset in virtualization: {}", data);
 
             if (!AlgorithmUtil.isClassification(data)) {
@@ -220,9 +231,11 @@ public class VisualizationService {
         }
 
         try {
-            Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(
-                    model.getTraining().getDatasetConfiguration());
+            DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
+            String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+            InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
 
+            Instances data  = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
             log.info("Dataset in virtualization: {}", data);
 
             if (!AlgorithmUtil.isRegression(data)) {
@@ -309,9 +322,11 @@ public class VisualizationService {
         }
 
         try {
-            Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(
-                    model.getTraining().getDatasetConfiguration());
+            DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
+            String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+            InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
 
+            Instances data  = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
             log.info("Dataset in virtualization: {}", data);
 
             if (!AlgorithmUtil.isRegression(data)) {
@@ -408,9 +423,11 @@ public class VisualizationService {
 //            }
 
         try {
-            Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(
-                    model.getTraining().getDatasetConfiguration());
+            DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
+            String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+            InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
 
+            Instances data  = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
             log.info("Dataset in virtualization: {}", data);
 
 
@@ -486,9 +503,11 @@ public class VisualizationService {
 
         try {
             // 📥 Load training dataset (x, y values)
-            Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(
-                    model.getTraining().getDatasetConfiguration());
+            DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
+            String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+            InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
 
+            Instances data  = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
             if (data.numAttributes() < 2) {
                 throw new IllegalStateException("Dataset must contain at least two numeric attributes for scatter plot");
             }

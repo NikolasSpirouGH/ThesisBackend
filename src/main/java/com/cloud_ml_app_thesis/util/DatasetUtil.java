@@ -211,20 +211,8 @@ public class DatasetUtil {
         return data;
     }
 
-    public static Instances loadDatasetInstancesByDatasetConfigurationFromMinio(DatasetConfiguration datasetConfiguration) throws Exception {
-        URI datasetUri = new URI(datasetConfiguration.getDataset().getFilePath());
-        logger.info("Dataset URI: {}", datasetUri);
-        String bucketName = Paths.get(datasetUri.getPath()).getName(0).toString();
-        String objectName = Paths.get(datasetUri.getPath()).subpath(1, Paths.get(datasetUri.getPath()).getNameCount()).toString();
-        logger.info("Bucket Name: {}", bucketName);
-        logger.info("Object Name: {}", objectName);
+    public static Instances loadDatasetInstancesByDatasetConfigurationFromMinio(DatasetConfiguration datasetConfiguration, InputStream datasetStream, String objectName) throws Exception {
 
-        InputStream datasetStream =  minioClient.getObject(
-                GetObjectArgs.builder()
-                        .bucket(bucketName)
-                        .object(objectName)
-                        .build()
-        );
         logger.info("Dataset Stream obtained successfully.");
 
         // Convert the dataset to ARFF format if it is in CSV or Excel format
@@ -276,36 +264,9 @@ public class DatasetUtil {
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    public static Instances loadPredictionInstancesFromCsv(Path csvPath,
-                                                           DatasetConfiguration config,
-                                                           AlgorithmType algoType) throws Exception {
-        logger.info("📥 Loading CSV file from: {}", csvPath);
 
-        // 1. Αν είναι .csv → μετατροπή σε .arff
-        String arffPath = csvToArff(Files.newInputStream(csvPath), csvPath.getFileName().toString());
-        logger.info("🔄 Converted to ARFF: {}", arffPath);
 
-        // 2. Φόρτωσε ARFF ως Instances
-        Instances data = new ConverterUtils.DataSource(arffPath).getDataSet();
-        logger.info("✅ Loaded ARFF with {} instances and {} attributes", data.numInstances(), data.numAttributes());
-
-        // 3. Αν είναι classification, διόρθωσε το class attribute (αν είναι STRING)
-        if (algoType.getName().equals(AlgorithmTypeEnum.CLASSIFICATION)) {
-            String classAttrName = resolveClassAttributeName(config, data);
-            List<String> classValues = extractClassValuesFromTrainingDataset(config);
-            forceNominalClassIfNeeded(data, classAttrName, classValues);
-        }
-
-        // 4. Επέλεξε τα σωστά attributes
-        return selectColumns(
-                data,
-                config.getBasicAttributesColumns(),
-                config.getTargetColumn(),
-                1 // prediction mode
-        );
-    }
-
-    private static String resolveClassAttributeName(DatasetConfiguration config, Instances data) {
+    public static String resolveClassAttributeName(DatasetConfiguration config, Instances data) {
         if (config.getTargetColumn() != null) {
             return data.attribute(Integer.parseInt(config.getTargetColumn()) - 1).name();
         } else {
@@ -313,10 +274,10 @@ public class DatasetUtil {
         }
     }
 
-    public static List<String> extractClassValuesFromTrainingDataset(DatasetConfiguration config) {
+    public static List<String> extractClassValuesFromTrainingDataset(DatasetConfiguration config, InputStream datasetStream, String objectName) {
         logger.info("▶ Entering extractClassValuesFromTrainingDataset()");
         try {
-            Instances trainingData = loadDatasetInstancesByDatasetConfigurationFromMinio(config);
+            Instances trainingData = loadDatasetInstancesByDatasetConfigurationFromMinio(config, datasetStream, objectName);
             Attribute classAttr = resolveClassAttribute(config, trainingData);
 
             if (!classAttr.isNominal()) {
@@ -355,5 +316,16 @@ public class DatasetUtil {
         } else {
             logger.info("✅ Class '{}' already nominal or numeric", classAttrName);
         }
+    }
+
+    public static String[] resolveDatasetMinioInfo(Dataset dataset){
+        String fullMinioPath= dataset.getFilePath();
+        String[] minioPathParts = fullMinioPath.split("/");
+
+        if(minioPathParts.length < 2) {
+            throw new RuntimeException("Could not retrieve the Dataset Minio information.");
+        }
+
+        return minioPathParts;
     }
 }

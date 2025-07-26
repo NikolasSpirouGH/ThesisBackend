@@ -14,12 +14,15 @@ import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
 import com.cloud_ml_app_thesis.service.DatasetService;
+import com.cloud_ml_app_thesis.service.MinioService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 import weka.core.Instances;
+
+import java.io.InputStream;
 
 @Component
 @RequiredArgsConstructor
@@ -38,6 +41,9 @@ public class TrainingHelper {
     private final DatasetConfigurationRepository datasetConfigurationRepository;
 
     private final DatasetService datasetService;
+
+    private final MinioService minioService;
+
     private final TrainingStatusRepository trainingStatusRepository;
 
     public TrainingDataInput configureTrainingDataInputByTrainCase(TrainingStartRequest request, User user) throws Exception {
@@ -107,16 +113,24 @@ public class TrainingHelper {
                 if (hasBasicCols) datasetConf.setBasicAttributesColumns(request.getBasicCharacteristicsColumns());
                 if (hasTargetCol) datasetConf.setTargetColumn(request.getTargetClassColumn());
                 datasetConf = datasetConfigurationRepository.save(datasetConf);
-                datasetInstances = hasFile
-                        ? DatasetUtil.prepareDataset(file, dataset.getFileName(), datasetConf)
-                        : DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf);
+
+                if(hasFile){
+                    datasetInstances = DatasetUtil.prepareDataset(file, dataset.getFileName(), datasetConf);
+                } else{
+                    String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+                    InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
+                    datasetInstances = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
+                }
+
             } else if (hasDatasetConfId) {
                 log.info("Inside datasetConfId: {}", datasetId);
                  datasetConf = datasetConfigurationRepository.findById(Integer.parseInt(request.getDatasetConfigurationId()))
                         .orElseThrow(() -> new EntityNotFoundException("DatasetConfiguration not found."));
                 if (hasBasicCols) datasetConf.setBasicAttributesColumns(request.getBasicCharacteristicsColumns());
                 if (hasTargetCol) datasetConf.setTargetColumn(request.getTargetClassColumn());
-                datasetInstances = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf);
+                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
+                datasetInstances = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
             } else {
                 return error("❌ No valid dataset provided.");
             }
@@ -131,9 +145,14 @@ public class TrainingHelper {
             if (hasBasicCols) datasetConf.setBasicAttributesColumns(request.getBasicCharacteristicsColumns());
             datasetConf = datasetConfigurationRepository.save(datasetConf);
 
-            datasetInstances = hasFile
-                    ? DatasetUtil.prepareDataset(file, dataset.getFileName(), datasetConf)
-                    : DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf);
+            if(hasFile){
+                datasetInstances = DatasetUtil.prepareDataset(file, dataset.getFileName(), datasetConf);
+            } else{
+                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
+                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
+                datasetInstances = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
+            }
+
             log.info("✅ Dataset instances loaded: {} instances", datasetInstances.numInstances());
         }
 

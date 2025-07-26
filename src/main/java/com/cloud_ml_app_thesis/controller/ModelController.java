@@ -56,6 +56,7 @@ public class ModelController {
     //Classification
     @Operation(summary = "Model Evaluation Chart", description = "Returns PNG bar chart with accuracy, precision, recall, F1 from metrics.json")
     @GetMapping(value = "/metrics-bar/model/{modelId}", produces = MediaType.IMAGE_PNG_VALUE)
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ByteArrayResource> getMetricsBarChart(@PathVariable Integer modelId, @AuthenticationPrincipal AccountDetails accountDetails) {
         return ResponseEntity.ok(visualizationService.generateBarChartFromMetricsJson(modelId, accountDetails.getUser()));
     }

@@ -11,18 +11,16 @@ import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
 import com.cloud_ml_app_thesis.enumeration.status.ModelExecutionStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
-import com.cloud_ml_app_thesis.repository.AlgorithmTypeRepository;
-import com.cloud_ml_app_thesis.repository.ModelTypeRepository;
-import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
+import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
-import com.cloud_ml_app_thesis.repository.UserRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
 import com.cloud_ml_app_thesis.util.DatasetUtil;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Hibernate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
@@ -52,6 +50,8 @@ import java.util.List;
 @Slf4j
 public class ModelExecutionService {
 
+    private final DatasetService datasetService;
+    private final DatasetConfigurationRepository datasetConfigurationRepository;
     private final ModelRepository modelRepository;
     private final UserRepository userRepository;
     private final ModelService modelService;
@@ -91,13 +91,15 @@ public class ModelExecutionService {
         ModelExecution execution = null;
 
         try {
-            DatasetConfiguration config = model.getTraining().getDatasetConfiguration();
+            DatasetConfiguration config = (DatasetConfiguration) Hibernate.unproxy(model.getTraining().getDatasetConfiguration());
+//            DatasetConfiguration config = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not find the DatasetConfiguration for the specified Model."));
             AlgorithmTypeEnum type = model.getTraining().getAlgorithmConfiguration().getAlgorithm().getType().getName();
             AlgorithmType algorithmType = algorithmTypeRepository.findByName(type).orElseThrow(() -> new IllegalStateException("Algorithm type not found"));
             String predictBucket = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
             Path csvPath = minioService.downloadObjectToTempFile(predictBucket, datasetKey);
             // ⬇️ 1. Κατέβασε και διάβασε Instances από MinIO (με μετατροπή, class fix, column filtering)
-            Instances predictInstances = DatasetUtil.loadPredictionInstancesFromCsv(
+
+            Instances predictInstances = datasetService.loadPredictionInstancesFromCsv(
                     csvPath,
                     config,
                     algorithmType

@@ -67,12 +67,12 @@ public class DataInitializer implements CommandLineRunner {
         initializeTrainingStatuses();
         initializeModelStatuses();
         initializeDatasetAccessibility();
-        initializeAlgorithms();
         initializeUserRoles();
         initializeModelAccessibilities();
         initializeModelTypes();
         initializeAlgorithmTypes();
         initializeAlgorithmAccessibilities();
+        initializeAlgorithms();
         initializeModelExecutionStatuses();
         recreateAdmins();
         initializeCategoriesStatuses();

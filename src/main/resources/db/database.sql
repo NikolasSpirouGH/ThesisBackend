@@ -61,3 +61,7 @@ select * from models;
 select * from datasets;
 
 select * from categories;
+
+select * from dataset_configurations
+;
+
