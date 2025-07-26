@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.entity.model;
 
+import com.cloud_ml_app_thesis.entity.AlgorithmType;
 import com.cloud_ml_app_thesis.entity.ModelType;
 import com.cloud_ml_app_thesis.entity.Category;
 import com.cloud_ml_app_thesis.entity.Training;
@@ -36,7 +37,7 @@ public class Model {
     private String modelUrl;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "algorithm_type_id", nullable = false)
+    @JoinColumn(name = "model_type_id", nullable = false)
     private ModelType modelType;
 
     @ManyToOne

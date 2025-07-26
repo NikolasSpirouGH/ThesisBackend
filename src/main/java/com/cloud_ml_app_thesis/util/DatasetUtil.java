@@ -59,6 +59,7 @@ public class DatasetUtil {
         }
         logger.info("Selected basic attributes columns: {}", columnNames);
 
+        //Training classfication
         if (prediction == 0) { // Training
             // Default to the last column if target class column is not provided
             if (targetClassColumn == null || targetClassColumn.isEmpty()) {
@@ -228,26 +229,48 @@ public class DatasetUtil {
         return data;
     }
 
-    public static byte[] replaceQuestionMarksWithPredictionResultsAsCSV(Instances dataset, List<String> predictions) {
-        logger.info("▶ Entering replaceQuestionMarksWithPredictionResultsAsCSV()");
-        // Προσθέτουμε νέα στήλη "prediction"
-        dataset.insertAttributeAt(new Attribute("prediction", (List<String>) null), dataset.numAttributes());
-        int predAttrIndex = dataset.numAttributes() - 1;
+    public static byte[] replaceQuestionMarksWithPredictionResultsAsCSV(Instances dataset, List<String> predictions, boolean isClusterer) {
+        logger.info("▶ Entering replaceQuestionMarksWithPredictionResultsAsCSV() with isClusterer = {}", isClusterer);
 
-        for (int i = 0; i < dataset.numInstances(); i++) {
-            dataset.instance(i).setValue(predAttrIndex, predictions.get(i));
+        if (!isClusterer) {
+            int classIndex = dataset.classIndex();
+            String classAttrName = dataset.classAttribute().name();
+
+            // ✅ Validate: All class values must be missing (?)
+            for (int i = 0; i < dataset.numInstances(); i++) {
+                Instance instance = dataset.instance(i);
+                if (!instance.isMissing(classIndex)) {
+                    throw new IllegalStateException("❌ Class attribute '" + classAttrName + "' must contain '?' (missing) values in prediction dataset.");
+                }
+            }
+
+            // 🔁 Replace ? values in class column
+            for (int i = 0; i < dataset.numInstances(); i++) {
+                dataset.instance(i).setValue(classIndex, predictions.get(i));
+            }
+        } else {
+            // ➕ Clusterer → Always add "prediction" column
+            logger.info("➕ Adding 'prediction' column for clustering results");
+            Attribute predictionAttr = new Attribute("prediction", (List<String>) null);
+            dataset.insertAttributeAt(predictionAttr, dataset.numAttributes());
+            int predictionIndex = dataset.numAttributes() - 1;
+
+            for (int i = 0; i < dataset.numInstances(); i++) {
+                dataset.instance(i).setValue(predictionIndex, predictions.get(i));
+            }
         }
 
+        // 📝 Build CSV string
         StringBuilder sb = new StringBuilder();
 
-        // Γράφουμε header
+        // Header
         for (int i = 0; i < dataset.numAttributes(); i++) {
             sb.append(dataset.attribute(i).name());
             if (i != dataset.numAttributes() - 1) sb.append(",");
         }
         sb.append("\n");
 
-        // Γράφουμε rows
+        // Data rows
         for (int i = 0; i < dataset.numInstances(); i++) {
             Instance instance = dataset.instance(i);
             for (int j = 0; j < dataset.numAttributes(); j++) {
@@ -263,8 +286,6 @@ public class DatasetUtil {
 
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
-
-
 
     public static String resolveClassAttributeName(DatasetConfiguration config, Instances data) {
         if (config.getTargetColumn() != null) {

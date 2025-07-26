@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 import weka.core.Instances;
 
 import java.io.InputStream;
+import java.time.ZonedDateTime;
 
 @Component
 @RequiredArgsConstructor
@@ -152,7 +153,7 @@ public class TrainingHelper {
                 InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
                 datasetInstances = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
             }
-
+            datasetConf.setUploadDate(ZonedDateTime.now());
             log.info("✅ Dataset instances loaded: {} instances", datasetInstances.numInstances());
         }
 

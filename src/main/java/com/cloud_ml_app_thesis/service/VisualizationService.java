@@ -50,7 +50,7 @@ public class VisualizationService {
         Model model = modelRepository.findById(modelId)
                 .orElseThrow(() -> new EntityNotFoundException("Model not found"));
 
-        if(!user.getUsername().equals(model.getTraining().getUser().getUsername()) && model.getAccessibility().equals(ModelAccessibilityEnum.PRIVATE)) {
+        if(!user.getUsername().equals(model.getTraining().getUser().getUsername()) && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to train this algorithm");
         }
         try {

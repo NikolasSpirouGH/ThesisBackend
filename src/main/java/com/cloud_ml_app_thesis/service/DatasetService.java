@@ -26,6 +26,7 @@ import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.repository.TrainingRepository;
 import com.cloud_ml_app_thesis.repository.UserRepository;
 import com.cloud_ml_app_thesis.specification.DatasetSpecification;
+import com.cloud_ml_app_thesis.util.AlgorithmUtil;
 import com.cloud_ml_app_thesis.util.DatasetUtil;
 import com.cloud_ml_app_thesis.util.FileUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -234,6 +235,7 @@ public class DatasetService {
 
         return dto;
     }
+
 //*********************************************************************************************************************
 
     public GenericResponse<List<String>> getDatasetUrls(String email) {
@@ -262,8 +264,28 @@ public class DatasetService {
         Instances data = new ConverterUtils.DataSource(arffPath).getDataSet();
         logger.info("✅ Loaded ARFF with {} instances and {} attributes", data.numInstances(), data.numAttributes());
 
+        AlgorithmTypeEnum type = algoType.getName();
+        logger.info("🧪 Algorithm type resolved: {}", type);
+        logger.info("👉 Is classification? {}", type == AlgorithmTypeEnum.CLASSIFICATION);
+
+        if (type != AlgorithmTypeEnum.CLUSTERING) {
+            int classIndex;
+            if (config.getTargetColumn() != null) {
+                classIndex = Integer.parseInt(config.getTargetColumn()) - 1;
+            } else {
+                classIndex = data.numAttributes() - 1;
+            }
+
+            if (classIndex < 0 || classIndex >= data.numAttributes()) {
+                throw new IllegalArgumentException("❌ Invalid class index: " + classIndex);
+            }
+
+            data.setClassIndex(classIndex);
+            logger.info("🎯 Set class index to: {} ({})", classIndex, data.classAttribute().name());
+        }
+
         // 3. Αν είναι classification, διόρθωσε το class attribute (αν είναι STRING)
-        if (algoType.getName().equals(AlgorithmTypeEnum.CLASSIFICATION)) {
+        if (algoType.getName() == AlgorithmTypeEnum.CLASSIFICATION && !AlgorithmUtil.isRegression(data)) {
             String classAttrName = DatasetUtil.resolveClassAttributeName(config, data);
 
             String[] minioPathParts = resolveDatasetMinioInfo(config.getDataset());
@@ -274,7 +296,7 @@ public class DatasetService {
             logger.info("Object Name: {}", objectName);
 
             InputStream datasetStream =  minioService.loadObjectAsInputStream(bucketName, objectName);
-            List<String> classValues = DatasetUtil.extractClassValuesFromTrainingDataset(config, datasetStream, objectName);
+            List<String> classValues = DatasetUtil. extractClassValuesFromTrainingDataset(config, datasetStream, objectName);
             DatasetUtil.forceNominalClassIfNeeded(data, classAttrName, classValues);
         }
 

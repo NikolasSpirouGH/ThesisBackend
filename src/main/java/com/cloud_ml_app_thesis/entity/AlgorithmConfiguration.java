@@ -30,6 +30,10 @@ public class AlgorithmConfiguration {
     @Column
     private String options;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "algorithm_type_id")
+    private AlgorithmType algorithmType;
+
     @JsonBackReference
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)

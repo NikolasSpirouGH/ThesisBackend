@@ -81,7 +81,7 @@ public class TaskStatusService {
     }
 
     public void completeTask(String taskId) {
-        taskStatusRepository.findModelIdByTaskId(taskId).ifPresent(task -> {
+        taskStatusRepository.findByTaskId(taskId).ifPresent(task -> {
             task.setStatus(TaskStatusEnum.COMPLETED);
             task.setFinishedAt(ZonedDateTime.now());
             taskStatusRepository.save(task);
@@ -90,7 +90,7 @@ public class TaskStatusService {
     }
 
     public void taskFailed(String taskId, String errorMessage) {
-        taskStatusRepository.findModelIdByTaskId(taskId).ifPresent(task -> {
+        taskStatusRepository.findByTaskId(taskId).ifPresent(task -> {
             task.setStatus(TaskStatusEnum.FAILED);
             task.setErrorMessage(errorMessage);
             task.setFinishedAt(ZonedDateTime.now());

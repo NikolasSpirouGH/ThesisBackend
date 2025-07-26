@@ -58,10 +58,21 @@ WHERE dataset_id IS NULL;
 
 select * from models;
 
-select * from datasets;
+select * from algorithms
+;
 
 select * from categories;
 
-select * from dataset_configurations
-;
+select *
+from trainings;
+
+
+select * from dataset_configurations;
+select * from models_executions;
+select * from Datasets;
+
+select *
+from models;
+
+
 

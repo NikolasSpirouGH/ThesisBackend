@@ -70,13 +70,17 @@ public class CustomPredictionService {
             Model model = modelRepository.findById(modelId)
                     .orElseThrow(() -> new EntityNotFoundException("Model with ID " + modelId + " not found"));
 
-            if(model.getAccessibility().equals(ModelAccessibilityEnum.PRIVATE) && !user.getUsername().equals(model.getTraining().getUser().getUsername())) {
+            if(model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE) && !user.getUsername().equals(model.getTraining().getUser().getUsername())) {
                 throw new AuthorizationDeniedException("You are not allowed to run this model");
             }
 
             if (!model.getModelType().getName().equals(ModelTypeEnum.CUSTOM)) {
                 taskStatusService.taskFailed(taskId, "This model is not Docker Based");
                 throw new IllegalArgumentException("This model is not Docker-based");
+            }
+
+            if (model.getFinalizationDate() == null) {
+                throw new IllegalArgumentException("You cannot predict with this model. You have to finalize it first");
             }
 
             String inputBucket = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);

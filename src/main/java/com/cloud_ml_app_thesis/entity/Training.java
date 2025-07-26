@@ -58,14 +58,14 @@ public class Training {
     private String results;
 
     // Optional: Validate at runtime that only one of the two algorithm configs is used
-    @PostLoad
-    @PostPersist
-    @PostUpdate
-    private void validateConsistency() {
-        if ((algorithmConfiguration != null && customAlgorithmConfiguration != null) ||
-                (algorithmConfiguration == null && customAlgorithmConfiguration == null)) {
-            throw new IllegalStateException("Training must have either algorithmConfiguration or customAlgorithmConfiguration, not both or none.");
-        }
-    }
+//    @PostLoad
+//    @PostPersist
+//    @PostUpdate
+//    private void validateConsistency() {
+//        if ((algorithmConfiguration != null && customAlgorithmConfiguration != null) ||
+//                (algorithmConfiguration == null && customAlgorithmConfiguration == null)) {
+//            throw new IllegalStateException("Training must have either algorithmConfiguration or customAlgorithmConfiguration, not both or none.");
+//        }
+//    }
 }
 

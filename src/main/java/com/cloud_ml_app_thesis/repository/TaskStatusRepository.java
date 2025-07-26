@@ -12,6 +12,8 @@ import java.util.Optional;
 public interface TaskStatusRepository extends JpaRepository<AsyncTaskStatus, String> {
 
 
-    @Query("select t.modelId from AsyncTaskStatus t where t.taskId =:taskId")
-   Optional<AsyncTaskStatus> findModelIdByTaskId(@Param("taskId") String taskId);
+//    @Query("select t.modelId from AsyncTaskStatus t where t.taskId =:taskId")
+//   Optional<AsyncTaskStatus> findModelIdByTaskId(@Param("taskId") String taskId);
+
+    Optional<AsyncTaskStatus> findByTaskId(String taskId);
 }

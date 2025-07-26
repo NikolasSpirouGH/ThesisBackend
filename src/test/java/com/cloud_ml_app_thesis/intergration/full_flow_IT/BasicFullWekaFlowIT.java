@@ -13,9 +13,8 @@ import java.io.File;
 import java.io.IOException;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.fail;
-
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -23,16 +22,14 @@ import static org.junit.jupiter.api.Assertions.fail;
 @TestPropertySource(properties = {
         "spring.main.allow-bean-definition-overriding=true"
 })
-public class BasicFullCustomFlowIT {
+public class BasicFullWekaFlowIT {
 
     @LocalServerPort
-     int port;
+    int port;
 
     String jwtToken ;
-    Integer modelId;
     String taskId;
-    Integer algorithmId;
-    Integer trainingId;
+    Integer modelId;
     Integer executionId;
 
     @BeforeEach
@@ -44,55 +41,21 @@ public class BasicFullCustomFlowIT {
 
     @Test
     @Order(1)
-    void shouldCreateCustomAlgorithm() throws IOException {
-        File parametersFile = new ClassPathResource("parameters/defaults.json").getFile();
-        File dockerTarFile = new ClassPathResource("algorithms/testalgo.tar").getFile();
-
-        Response response = given()
-                .auth().oauth2(jwtToken)
-                .multiPart("name", "testalgo")
-                .multiPart("description", "test description")
-                .multiPart("version", "1.0.0")
-                .multiPart("accessibility", "PUBLIC")
-                .multiPart("keywords", "ml", "classification")
-                .multiPart("parametersFile", parametersFile)
-                .multiPart("dockerTarFile", dockerTarFile)
-                .when()
-                .post("/api/algorithms/createCustomAlgorithm")
-                .then()
-                .statusCode(200)
-                .body("message", containsString("Algorithm created successfully"))
-                .extract()
-                .response();
-
-        algorithmId = response.jsonPath().getInt("dataHeader");
-
-        Assertions.assertNotNull(algorithmId, "Algorithm id is not null");
-
-        System.out.println("Custom Algorithm created successfully with id: " + algorithmId);
-
-    }
-
-    @Test
-    @Order(2)
-    void shouldTrainCustomModel() throws IOException {
-        Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
-
-        File datasetFile = new ClassPathResource("datasets/dataset2.csv").getFile();
+    void shouldTrainDataWithWekaAlgorithm() throws IOException {
+        File trainFile = new ClassPathResource("datasets/dataset2.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
                 .contentType(ContentType.MULTIPART)
-                .multiPart("datasetFile", datasetFile)
-                .multiPart("algorithmId", algorithmId)
-                .multiPart("basicAttributesColumns", "feature1, feature2", "feature3")
-                .multiPart("targetColumn", "label")
+                .multiPart("file", trainFile)
+                .multiPart("algorithmId", 9)
+                .multiPart("basicCharacteristicsColumns", "1,2,3,4")
+                .multiPart("targetClassColumn", "5")
                 .when()
-                .post("/api/train/custom")
+                .post("/api/train/train-model")
                 .then()
                 .log().all()
-                .extract()
-                .response();
+                .extract().response();
 
         System.out.println("Training raw response: " + rawResponse.asPrettyString());
 
@@ -117,12 +80,10 @@ public class BasicFullCustomFlowIT {
         System.out.println("Model ID after completion: " + modelId);
     }
 
-    //Finalized Model
     @Test
-    @Order(3)
-    void shouldCategorizeModel() {
+    @Order(2)
+    void shouldCategorizeModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId is null");
-
         String finalizePayload = """
         {
           "name": "My Finalized Model",
@@ -151,16 +112,13 @@ public class BasicFullCustomFlowIT {
 
         modelId = finalizedModelId;
         System.out.println("Finalized Model Id: " + finalizedModelId);
-
     }
 
-    //Use Finalized Model
     @Test
-    @Order(4)
-    void shouldPredictCustomModel() throws IOException {
+    @Order(3)
+    void shouldPredictModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
-
-        File predictionFile = new ClassPathResource("datasets/predict.csv").getFile();
+        File predictionFile = new ClassPathResource("datasets/prediction_nominal.csv").getFile();
 
         Response predictionResponse = given()
                 .port(port)
@@ -175,14 +133,13 @@ public class BasicFullCustomFlowIT {
                 .body("message", containsString("Prediction started asynchronously. Track with taskId."))
                 .extract()
                 .response();
-
         String predictionTaskId = predictionResponse.jsonPath().getString("dataHeader");
 
         Assertions.assertNotNull(predictionTaskId, "❌ predictionTaskId is null");
 
         waitForTaskCompletion(predictionTaskId);
 
-         executionId = given()
+        executionId = given()
                 .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .get("/api/tasks/{taskId}/execution-id", predictionTaskId)
@@ -195,29 +152,7 @@ public class BasicFullCustomFlowIT {
         Assertions.assertNotNull(executionId, " executionId is null");
 
         System.out.println("Execution ID: " + executionId);
-    }
 
-    @Test
-    @Order(5)
-    void shouldDownloadPredictionResultFile() {
-        Assumptions.assumeTrue(modelId != null, "Skipping test because modelId is null");
-
-        Assertions.assertNotNull(this.executionId, "❌ executionId is null");
-
-        Response downloadResponse = given()
-                .port(port)
-                .header("Authorization", "Bearer " + jwtToken)
-                .get("/api/model-exec/{executionId}/result", this.executionId)
-                .then()
-                .statusCode(200)
-                .extract()
-                .response();
-
-        byte[] predictionFile = downloadResponse.getBody().asByteArray();
-
-        Assertions.assertTrue(predictionFile.length > 0, "❌ Downloaded prediction file is empty");
-
-        System.out.println("📥 Prediction result downloaded successfully. Bytes: " + predictionFile.length);
     }
 
     private void waitForTaskCompletion(String taskId) {
@@ -255,8 +190,7 @@ public class BasicFullCustomFlowIT {
         fail("❌ Task " + taskId + " did not reach expected status: " + "COMPLETED" + " within timeout.");
     }
 
-
-     private void loginAndSetToken() {
+    private void loginAndSetToken() {
         String loginPayload = """
         {
           "username": "bigspy",
@@ -273,7 +207,7 @@ public class BasicFullCustomFlowIT {
                 .statusCode(200)
                 .extract()
                 .response();
-         System.out.println("🔁 Login response: " + response.asPrettyString());
+        System.out.println("🔁 Login response: " + response.asPrettyString());
 
         jwtToken = response.jsonPath().getString("dataHeader.token");
         System.out.println("🔐 JWT token: " + jwtToken);

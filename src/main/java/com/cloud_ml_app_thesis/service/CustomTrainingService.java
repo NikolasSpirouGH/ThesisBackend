@@ -85,9 +85,14 @@ public class CustomTrainingService {
 
             TrainingStatus running = trainingStatusRepository.findByName(TrainingStatusEnum.RUNNING)
                     .orElseThrow(() -> new IllegalStateException("TrainingStatus RUNNING not found"));
+
+            DatasetConfiguration datasetConfig = datasetConfigurationRepository.findById(metadata.datasetConfigurationId())
+                    .orElseThrow(() -> new IllegalStateException("DatasetConfiguration not found"));
             training = new Training();
+            training.setDatasetConfiguration(datasetConfig);
             training.setStartedDate(ZonedDateTime.now());
             training.setStatus(running);
+            training.setUser(user);
             trainingRepository.save(training);
 
             if (!algorithm.getAccessibility().getName().equals(AlgorithmAccessibiltyEnum.PUBLIC)
@@ -101,9 +106,6 @@ public class CustomTrainingService {
             Path datasetPath = minioService.downloadObjectToTempFile(
                     metadata.datasetBucket(), metadata.datasetKey());
             log.info("📥 Dataset [{}] downloaded to: {}", metadata.datasetKey(), datasetPath);
-
-            DatasetConfiguration datasetConfig = datasetConfigurationRepository.findById(metadata.datasetConfigurationId())
-                    .orElseThrow(() -> new IllegalStateException("DatasetConfiguration not found"));
 
             CustomAlgorithmImage activeImage = algorithm.getImages().stream()
                     .filter(CustomAlgorithmImage::isActive)
@@ -180,7 +182,6 @@ public class CustomTrainingService {
             Path basePath = FileUtil.getSharedPathRoot();
             dataDir = Files.createTempDirectory(basePath, "training-ds-");
             outputDir = Files.createTempDirectory(basePath, "training-out-");
-
 
             FileUtil.writeParamsJson(finalParams, datasetConfig, dataDir);
 
@@ -260,9 +261,10 @@ public class CustomTrainingService {
             trainingRepository.save(training);
 
             // 11. Complete async task
-            taskStatusService.completeTask(taskId);
+
             task.setModelId(model.getId());
             task.setTrainingId(model.getTraining().getId());
+            taskStatusService.completeTask(taskId);
             taskStatusRepository.save(task);
 
             log.info("✅ Training complete [taskId={}] with modelId={}", taskId, model.getId());

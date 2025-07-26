@@ -8,6 +8,7 @@ import com.cloud_ml_app_thesis.dto.train.RegressionEvaluationResult;
 import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
+import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
@@ -56,6 +57,7 @@ public class PredefinedTrainService {
     private final ModelRepository modelRepository;
     private final ModelTypeRepository modelTypeRepository;
     private final TaskStatusService taskStatusService;
+    private final AlgorithmTypeRepository algorithmTypeRepository;
 
     @Transactional
     public void train(String taskId, User user, PredefinedTrainMetadata metadata) {
@@ -101,6 +103,7 @@ public class PredefinedTrainService {
             Instances testData = new Instances(data, trainSize, testSize);
 
             String fixedRawOptions = AlgorithmUtil.fixNestedOptions(config.getOptions());
+            AlgorithmType algorithmType;
             if (isClassifier && AlgorithmUtil.isClassification(data)) {
                 log.info("📊 Classification detected");
 
@@ -113,7 +116,7 @@ public class PredefinedTrainService {
                 cls.buildClassifier(train);
                 evaluationResult = modelService.evaluateClassifier(cls, trainData, testData);
                 results = evaluationResult.getSummary();
-
+                algorithmType = algorithmTypeRepository.findByName(AlgorithmTypeEnum.CLASSIFICATION).orElseThrow(() -> new EntityNotFoundException("AlgorithmType not found"));
                 modelBytes = modelService.serializeModel(cls);
 
             } else if (isClassifier && AlgorithmUtil.isRegression(data)) {
@@ -128,7 +131,7 @@ public class PredefinedTrainService {
                 cls.buildClassifier(train);
                 regressionEvaluationResult = modelService.evaluateRegressor(cls, trainData, testData);
                 results = regressionEvaluationResult.getSummary();
-
+                algorithmType = algorithmTypeRepository.findByName(AlgorithmTypeEnum.REGRESSION).orElseThrow(() -> new EntityNotFoundException("AlgorithmType not found"));
                 modelBytes = modelService.serializeModel(cls);
 
             } else if (isClusterer) {
@@ -144,13 +147,14 @@ public class PredefinedTrainService {
                 cls.buildClusterer(data);
                 clusterEvaluationResult = modelService.evaluateClusterer(cls, data);
                 results = clusterEvaluationResult.getSummary();
-
+                algorithmType = algorithmTypeRepository.findByName(AlgorithmTypeEnum.CLUSTERING).orElseThrow(() -> new EntityNotFoundException("AlgorithmType not found"));
                 modelBytes = modelService.serializeModel(cls);
-
             } else {
                 throw new UnsupportedOperationException("Unsupported algorithm type: " + algorithmClassName);
             }
 
+            config.setAlgorithmType(algorithmType);
+            algorithmConfigurationRepository.save(config);
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
             String modelKey = user.getUsername() + "_" + timestamp + "_model.pkl";
             String metricsKey = user.getUsername() + "_" + timestamp + "_metrics.json";
@@ -185,12 +189,10 @@ public class PredefinedTrainService {
             modelService.saveModel(training, modelUrl, metricsUrl, predefined, user);
             Model model = modelRepository.findByTraining(training)
                     .orElseThrow(() -> new EntityNotFoundException("Model not linked to training"));
-
             TrainingStatus completed = trainingStatusRepository.findByName(TrainingStatusEnum.COMPLETED)
                     .orElseThrow(() -> new IllegalStateException("TrainingStatus COMPLETED not found"));
 
             training.setModel(model);
-
             training.setStatus(completed);
             trainingRepository.save(training);
             taskStatusService.completeTask(taskId);

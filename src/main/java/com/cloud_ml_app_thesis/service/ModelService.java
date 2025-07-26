@@ -5,13 +5,10 @@ import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
 import com.cloud_ml_app_thesis.dto.train.ClusterEvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.EvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.RegressionEvaluationResult;
-import com.cloud_ml_app_thesis.entity.Category;
-import com.cloud_ml_app_thesis.entity.Training;
+import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.accessibility.ModelAccessibility;
-import com.cloud_ml_app_thesis.entity.ModelType;
 import com.cloud_ml_app_thesis.entity.model.Keyword;
 import com.cloud_ml_app_thesis.entity.model.Model;
-import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
 import com.cloud_ml_app_thesis.enumeration.status.ModelStatusEnum;
@@ -130,6 +127,8 @@ public class ModelService {
         model.setFinalizationDate(ZonedDateTime.now());
         log.info("✔️ finalizationDate = {}", model.getFinalizationDate());
 
+        model.setStatus(modelStatusRepository.findByName(ModelStatusEnum.FINISHED).orElseThrow(() -> new EntityNotFoundException("Model status not found")));
+
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new EntityNotFoundException("Category not found"));
         model.setCategory(category);
@@ -148,6 +147,7 @@ public class ModelService {
         model.setKeywords(keywords);
         log.info("✔️ keywords = {}", keywords.stream().map(Keyword::getName).toList());
 
+        model.setFinalized(true);
         modelRepository.save(model);
         log.info("✅ Model with ID={} finalized successfully", model.getId());
     }
@@ -160,7 +160,6 @@ public class ModelService {
         Category defaultCategory = categoryRepository
                 .findByName("Default")
                 .orElseThrow(() -> new EntityNotFoundException("Could not find default category"));
-
         Model model = new Model();
         model.setTraining(training);
         model.setModelUrl(modelUrl);

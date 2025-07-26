@@ -29,14 +29,10 @@ import org.springframework.stereotype.Service;
 import weka.classifiers.Classifier;
 import weka.clusterers.Clusterer;
 import weka.core.Attribute;
-import weka.core.Instance;
 import weka.core.Instances;
-import weka.core.converters.ConverterUtils;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
@@ -65,6 +61,7 @@ public class ModelExecutionService {
     private static final Logger logger = LoggerFactory.getLogger(ModelExecutionService.class);
     private final ModelTypeRepository modelTypeRepository;
     private final AlgorithmTypeRepository algorithmTypeRepository;
+    private final AlgorithmConfigurationRepository algorithmConfigurationRepository;
 
     @Transactional
     public void executePredefined(String taskId, Integer modelId, String datasetKey, User user) {
@@ -76,7 +73,7 @@ public class ModelExecutionService {
         Model model = modelRepository.findById(modelId)
                 .orElseThrow(() -> new EntityNotFoundException("Model not found with ID: " + modelId));
 
-        if (model.getAccessibility().equals(ModelAccessibilityEnum.PRIVATE) &&
+        if (model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE) &&
                 !user.getUsername().equals(model.getTraining().getUser().getUsername())) {
             throw new AuthorizationDeniedException("You are not allowed to run this model");
         }
@@ -92,13 +89,14 @@ public class ModelExecutionService {
 
         try {
             DatasetConfiguration config = (DatasetConfiguration) Hibernate.unproxy(model.getTraining().getDatasetConfiguration());
-//            DatasetConfiguration config = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not find the DatasetConfiguration for the specified Model."));
             AlgorithmTypeEnum type = model.getTraining().getAlgorithmConfiguration().getAlgorithm().getType().getName();
-            AlgorithmType algorithmType = algorithmTypeRepository.findByName(type).orElseThrow(() -> new IllegalStateException("Algorithm type not found"));
+            AlgorithmConfiguration algorithmConfiguration = (AlgorithmConfiguration) Hibernate.unproxy(model.getTraining().getAlgorithmConfiguration());
+            AlgorithmType algorithmType = algorithmConfiguration.getAlgorithmType();
             String predictBucket = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
             Path csvPath = minioService.downloadObjectToTempFile(predictBucket, datasetKey);
-            // ⬇️ 1. Κατέβασε και διάβασε Instances από MinIO (με μετατροπή, class fix, column filtering)
 
+            logger.info("Model type : {}", model.getTraining().getAlgorithmConfiguration().getAlgorithm().getType());
+            // ⬇️ 1. Κατέβασε και διάβασε Instances από MinIO (με μετατροπή, class fix, column filtering)
             Instances predictInstances = datasetService.loadPredictionInstancesFromCsv(
                     csvPath,
                     config,
@@ -113,10 +111,12 @@ public class ModelExecutionService {
 
             // ⬇️ 3. Κάνε prediction ανάλογα το μοντέλο
             List<String> predictions;
+            boolean isClsuterer = false;
             if (modelObject instanceof Classifier classifier) {
                 predictions = predictWithClassifier(classifier, predictInstances);
             } else if (modelObject instanceof Clusterer clusterer) {
                 predictions = predictWithClusterer(clusterer, predictInstances);
+                isClsuterer = true;
             } else {
                 throw new IllegalStateException("Unsupported model type: " + modelObject.getClass().getName());
             }
@@ -125,12 +125,15 @@ public class ModelExecutionService {
             execution = new ModelExecution();
             execution.setModel(model);
             execution.setExecutedByUser(user);
+            execution.setDataset(config.getDataset());
             execution.setExecutedAt(ZonedDateTime.now());
             execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS).orElseThrow());
             modelExecutionRepository.save(execution);
 
+            logger.info("Attributes Columns: {}", predictInstances.numAttributes());
+            logger.info("Target Class Column: {}", config.getTargetColumn());
             // ➕ Προσθήκη predictions στη μορφή CSV
-            byte[] resultFile = DatasetUtil.replaceQuestionMarksWithPredictionResultsAsCSV(predictInstances, predictions);
+            byte[] resultFile = DatasetUtil.replaceQuestionMarksWithPredictionResultsAsCSV(predictInstances, predictions, isClsuterer);
 
             // ☁️ Upload result to MinIO
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
@@ -174,7 +177,7 @@ public class ModelExecutionService {
                 .orElseThrow(() -> new EntityNotFoundException("Model execution " + modelExecutionId + " not found"));
 
         // 🔐 Authorization check
-        if (modelExecution.getModel().getAccessibility().equals(ModelAccessibilityEnum.PRIVATE) &&
+        if (modelExecution.getModel().getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE) &&
                 !modelExecution.getExecutedByUser().getUsername().equals(user.getUsername())) {
             throw new AuthorizationDeniedException("You are not authorized to access this execution result");
         }
@@ -205,6 +208,8 @@ public class ModelExecutionService {
         logger.info("   ➤ Number of attributes: {}", dataset.numAttributes());
         logger.info("   ➤ Class index: {}", dataset.classIndex());
         dataset.setClassIndex(dataset.numAttributes() - 1);
+        logger.info("   ➤ Class index: {}", dataset.classIndex());
+
         Attribute classAttribute = dataset.classAttribute();
 
         if (classAttribute != null) {
@@ -265,27 +270,4 @@ public class ModelExecutionService {
         logger.info("Cluster predictions completed successfully. Total predictions: {}", predictions.size());
         return predictions;
     }
-
-
-
-public ByteArrayResource getPredictionResults(Integer modelExecutionId, User user) {
-    ModelExecution execution = modelExecutionRepository
-            .findById(modelExecutionId).orElseThrow(()-> new EntityNotFoundException("Model execution " + modelExecutionId + " not found"));
-
-    // Already saved during initial prediction
-    Instances predictInstances = null;
-    try {
-        predictInstances = DatasetUtil.loadPredictionDataset(execution.getDataset());
-    } catch (Exception e) {
-        throw new RuntimeException(e);
-    }
-    byte[] result = null;
-    try {
-        result = DatasetUtil.replaceQuestionMarksWithPredictionResultsAsCSV(predictInstances,  Arrays.asList(execution.getPredictionResult().split(",")));
-    } catch (Exception e) {
-        throw new RuntimeException(e);
-    }
-    return new ByteArrayResource(result);
-}
-
 }

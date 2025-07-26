@@ -31,8 +31,7 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.stereotype.Component;
 import weka.classifiers.Classifier;
 import weka.clusterers.Clusterer;
-import weka.core.Option;
-import weka.core.OptionHandler;
+import weka.core.*;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -374,6 +373,37 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("Failed to save algorithm with name: " + (al != null ? al.getName() : "unknown") +
                     ", Description length: " + (al != null ? al.getDescription().length() : "unknown"));
             System.out.println("Options Description length: " + (al != null ? al.getOptionsDescription().length() : "unknown"));
+        }
+    }
+
+    public static boolean isRegressor(Classifier classifier) {
+        try {
+            // 1. Create dummy dataset
+            ArrayList<Attribute> attributes = new ArrayList<>();
+            attributes.add(new Attribute("feature1"));
+            attributes.add(new Attribute("feature2"));
+            attributes.add(new Attribute("target")); // numeric class
+
+            Instances data = new Instances("dummy", attributes, 0);
+            data.setClassIndex(data.numAttributes() - 1);
+
+            // Add dummy data
+            double[] vals1 = {1.0, 2.0, 3.0};
+            double[] vals2 = {2.0, 3.0, 4.0};
+            double[] target = {10.0, 15.0, 20.0};
+
+            for (int i = 0; i < vals1.length; i++) {
+                double[] instance = {vals1[i], vals2[i], target[i]};
+                data.add(new DenseInstance(1.0, instance));
+            }
+
+            // 2. Try to build model
+            classifier.buildClassifier(data);
+
+            // 3. Check if classAttribute is numeric
+            return data.classAttribute().isNumeric();
+        } catch (Exception e) {
+            return false;
         }
     }
 }
