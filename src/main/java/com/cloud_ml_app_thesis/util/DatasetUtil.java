@@ -37,7 +37,6 @@ import java.util.List;
 
 public class DatasetUtil {
     private static final Logger logger = LoggerFactory.getLogger(DatasetService.class);
-    private static MinioClient minioClient;
     public static Instances selectColumns(Instances data, String basicAttributesColumns, String targetClassColumn, int prediction) throws Exception {
         List<String> columnNames = new ArrayList<>();
 
@@ -183,32 +182,6 @@ public class DatasetUtil {
         Instances data = new ConverterUtils.DataSource(datasetStream).getDataSet();
         int prediction = 0;
         data = selectColumns(data, datasetConfiguration.getBasicAttributesColumns(), datasetConfiguration.getTargetColumn(), prediction);
-        return data;
-    }
-    public static Instances loadPredictionDataset(Dataset dataset) throws Exception {
-        URI datasetUri = new URI(dataset.getFilePath());
-        logger.info("Dataset URI: {}", datasetUri);
-        String bucketName = Paths.get(datasetUri.getPath()).getName(0).toString();
-        String objectName = Paths.get(datasetUri.getPath()).subpath(1, Paths.get(datasetUri.getPath()).getNameCount()).toString();
-        logger.info("Bucket Name: {}", bucketName);
-        logger.info("Object Name: {}", objectName);
-
-        InputStream datasetStream = minioClient.getObject(
-                GetObjectArgs.builder()
-                        .bucket(bucketName)
-                        .object(objectName)
-                        .build()
-        );
-        logger.info("Dataset Stream obtained successfully.");
-
-        // Convert the dataset to ARFF format if it is in CSV or Excel format
-        String fileExtension = getFileExtension(objectName);
-        if (fileExtension.equalsIgnoreCase(".csv")) {
-            String arffFilePath = csvToArff(datasetStream, objectName);
-            datasetStream = Files.newInputStream(Paths.get(arffFilePath));
-        }
-
-        Instances data = new ConverterUtils.DataSource(datasetStream).getDataSet();
         return data;
     }
 

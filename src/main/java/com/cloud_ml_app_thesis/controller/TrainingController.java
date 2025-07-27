@@ -40,8 +40,33 @@ public class TrainingController {
                 description = """
                         User's Inputs :
                         'datasetFile' : training dataset(.csv)
-                        'some other inputs' : ..input'
-                        """,
+                        'train.py' : Required structure of metrics inside train.py:
+                        {
+                          "type": "classification",
+                          "accuracy": 0.92,
+                          "precision": 0.91,
+                          "recall": 0.88,
+                          "f1Score": 0.89,
+                          "confusionMatrix": [[30, 2], [1, 27]],
+                          "classLabels": ["yes", "no"]
+                        }
+                        
+                        {
+                          "type": "regression",
+                          "rmse": 1.25,
+                          "mae": 0.93,
+                          "rSquared": 0.85
+                        }
+                        
+                        {
+                          "type": "clustering",
+                          "numClusters": 3,
+                          "clusterSizes": [50, 45, 55],
+                          "silhouetteScore": 0.71
+                        }
+                        
+                        ''
+                         """,
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
                     content = @Content(

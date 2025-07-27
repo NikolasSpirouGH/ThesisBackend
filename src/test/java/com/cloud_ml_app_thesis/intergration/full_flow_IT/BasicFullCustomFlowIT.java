@@ -46,7 +46,7 @@ public class BasicFullCustomFlowIT {
     @Order(1)
     void shouldCreateCustomAlgorithm() throws IOException {
         File parametersFile = new ClassPathResource("parameters/defaults.json").getFile();
-        File dockerTarFile = new ClassPathResource("algorithms/testalgo.tar").getFile();
+        File dockerTarFile = new ClassPathResource("algorithms/classification.tar").getFile();
 
         Response response = given()
                 .auth().oauth2(jwtToken)
@@ -85,8 +85,6 @@ public class BasicFullCustomFlowIT {
                 .contentType(ContentType.MULTIPART)
                 .multiPart("datasetFile", datasetFile)
                 .multiPart("algorithmId", algorithmId)
-                .multiPart("basicAttributesColumns", "feature1, feature2", "feature3")
-                .multiPart("targetColumn", "label")
                 .when()
                 .post("/api/train/custom")
                 .then()
@@ -160,7 +158,7 @@ public class BasicFullCustomFlowIT {
     void shouldPredictCustomModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
 
-        File predictionFile = new ClassPathResource("datasets/predict.csv").getFile();
+        File predictionFile = new ClassPathResource("datasets/prediction_nominal_custom.csv").getFile();
 
         Response predictionResponse = given()
                 .port(port)

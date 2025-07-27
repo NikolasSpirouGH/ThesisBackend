@@ -106,6 +106,17 @@ public class CustomTrainingService {
             Path datasetPath = minioService.downloadObjectToTempFile(
                     metadata.datasetBucket(), metadata.datasetKey());
             log.info("📥 Dataset [{}] downloaded to: {}", metadata.datasetKey(), datasetPath);
+            try {
+                List<String> previewLines = Files.readAllLines(datasetPath)
+                        .stream()
+                        .limit(5)
+                        .collect(Collectors.toList());
+
+                log.info("📄 Preview of training dataset (first 5 lines):");
+                previewLines.forEach(line -> log.info("    → {}", line));
+            } catch (IOException e) {
+                log.warn("⚠️ Could not read preview of dataset at {}: {}", datasetPath, e.getMessage());
+            }
 
             CustomAlgorithmImage activeImage = algorithm.getImages().stream()
                     .filter(CustomAlgorithmImage::isActive)

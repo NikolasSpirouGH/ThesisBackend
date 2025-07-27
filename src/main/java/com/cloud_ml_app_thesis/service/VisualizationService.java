@@ -6,6 +6,7 @@ import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
 import com.cloud_ml_app_thesis.exception.BadRequestException;
 import com.cloud_ml_app_thesis.repository.DatasetConfigurationRepository;
@@ -130,24 +131,24 @@ public class VisualizationService {
                 && model.getAccessibility().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to access this model");
         }
-
+        if (model.getModelType().getName().equals(ModelTypeEnum.PREDEFINED)) {
         try {
             DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
             String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
             InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
 
-            Instances data  = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-            log.info("Dataset in virtualization: {}", data);
+                Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
+                log.info("Dataset in virtualization: {}", data);
 
-            if (!AlgorithmUtil.isClassification(data)) {
-                throw new BadRequestException("The model with ID " + modelId + " is not a classification model.");
+                if (!AlgorithmUtil.isClassification(data)) {
+                    throw new BadRequestException("The model with ID " + modelId + " is not a classification model.");
+                }
+
+            } catch(Exception e){
+                log.error("❌ Failed to load dataset for modelId={} from MinIO", modelId, e);
+                throw new RuntimeException("Problem loading dataset from MinIO for modelId=" + modelId, e);
             }
-
-        } catch (Exception e) {
-            log.error("❌ Failed to load dataset for modelId={} from MinIO", modelId, e);
-            throw new RuntimeException("Problem loading dataset from MinIO for modelId=" + modelId, e);
         }
-
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
             throw new IllegalArgumentException("Model does not contain metrics URL");
