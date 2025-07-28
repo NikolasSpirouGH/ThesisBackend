@@ -104,9 +104,10 @@ public class TrainingHelper {
                 .orElseThrow(() -> new EntityNotFoundException("Algorithm not found."));
 
         //If Classification
-        if(algorithm.getType().getName().equals(AlgorithmTypeEnum.CLASSIFICATION)) {
+        if(algorithm.getType().getName().equals(AlgorithmTypeEnum.CLASSIFICATION) || algorithm.getType().getName().equals(AlgorithmTypeEnum.REGRESSION)) {
             if (hasDatasetId) {
                 log.info("Inside datasetId: {}", datasetId);
+                log.info("Classifier: {}", algorithm.getType().getName());
                 Dataset dataset = datasetRepository.findById(Integer.parseInt(datasetId))
                         .orElseThrow(() -> new EntityNotFoundException("Dataset not found: id=" + datasetId));
                 datasetConf = new DatasetConfiguration();
@@ -138,6 +139,7 @@ public class TrainingHelper {
         }
         //If Clustering
         else{
+            log.info("Clustering: {}", algorithm.getType().getName());
             Dataset dataset = datasetRepository.findById(Integer.parseInt(datasetId))
                     .orElseThrow(() -> new EntityNotFoundException("Dataset not found: id=" + datasetId));
             datasetConf = new DatasetConfiguration();

@@ -50,6 +50,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import weka.core.Attribute;
+import weka.core.Instance;
 import weka.core.Instances;
 import weka.core.converters.ArffLoader;
 import weka.core.converters.ArffSaver;
@@ -138,11 +139,11 @@ public class DatasetService {
         return datasetRepository.findAll(spec, pageable);
     }
 
-    public GenericResponse<Dataset> uploadDataset(MultipartFile file, User user, DatasetFunctionalTypeEnum datasetFunctionalTypeEnum)  {
+    public GenericResponse<Dataset> uploadDataset(MultipartFile file, User user, DatasetFunctionalTypeEnum datasetFunctionalTypeEnum) {
 
         log.info("Uploading dataset with original file name: {}", file.getOriginalFilename());
         String originalFilename = file.getOriginalFilename();
-        if(originalFilename == null || originalFilename.isBlank()){
+        if (originalFilename == null || originalFilename.isBlank()) {
             return null;
         }
 
@@ -150,15 +151,15 @@ public class DatasetService {
         log.info("Uploading dataset with object name: {}", objectName);
         String bucketName = null;
         try {
-             bucketName = null;
-            if(datasetFunctionalTypeEnum == DatasetFunctionalTypeEnum.TRAIN){
+            bucketName = null;
+            if (datasetFunctionalTypeEnum == DatasetFunctionalTypeEnum.TRAIN) {
                 bucketName = bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET);
-            } else if(datasetFunctionalTypeEnum == DatasetFunctionalTypeEnum.PREDICT) {
+            } else if (datasetFunctionalTypeEnum == DatasetFunctionalTypeEnum.PREDICT) {
                 bucketName = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
             }
             minioService.uploadObjectToBucket(file, bucketName, objectName);
 
-        } catch (RuntimeException e){
+        } catch (RuntimeException e) {
             e.printStackTrace();
             throw e;
         } catch (IOException e) {
@@ -187,8 +188,8 @@ public class DatasetService {
             dataset = datasetRepository.save(dataset);
             return new GenericResponse<>(dataset, null, "Dataset uploaded successfully", null);
 
-        } catch (DataAccessException e){
-            logger.error("Failed to save Dataset '{}' for user '{}'.", dataset.getOriginalFileName(), user.getUsername() );
+        } catch (DataAccessException e) {
+            logger.error("Failed to save Dataset '{}' for user '{}'.", dataset.getOriginalFileName(), user.getUsername());
             throw e;
         }
     }
@@ -213,9 +214,9 @@ public class DatasetService {
 
 
     //*********************************************************************************************************************
-    public GenericResponse<?> getDatasets(String username){
+    public GenericResponse<?> getDatasets(String username) {
         Optional<List<Dataset>> datasetsOptional = datasetRepository.findAllByUserUsername(username);
-        if(datasetsOptional.isPresent()){
+        if (datasetsOptional.isPresent()) {
             List<DatasetSelectTableDTO> datasetSelectTableDTOS = datasetsOptional.get().stream()
                     .map(this::convertToDTO)
                     .toList();
@@ -224,7 +225,7 @@ public class DatasetService {
         return new GenericResponse<String>("Could not find datasets for user '" + username + "'.", null, null, new Metadata());
     }
 
-    private DatasetSelectTableDTO convertToDTO(Dataset dataset){
+    private DatasetSelectTableDTO convertToDTO(Dataset dataset) {
         DatasetSelectTableDTO dto = objectMapper.convertValue(dataset, DatasetSelectTableDTO.class);
 
         long completeCount = trainingRepository.countByDatasetConfigurationDatasetIdAndStatus(dataset.getId(), TrainingStatusEnum.COMPLETED);
@@ -240,67 +241,76 @@ public class DatasetService {
 
     public GenericResponse<List<String>> getDatasetUrls(String email) {
         Optional<User> user = userRepository.findByEmail(email);
-        if(user.isEmpty()) {
+        if (user.isEmpty()) {
             //TODO LOGGER AND EXCEPTION HANDLING
             System.out.println("User do not exists");
         }
         List<String> datasetUrls = user.map(u -> u.getDatasets().stream()
                         .map(Dataset::getFilePath)
                         .collect(Collectors.toList()))
-                        .orElse(Collections.emptyList());
+                .orElse(Collections.emptyList());
         return new GenericResponse<List<String>>(datasetUrls, null, null, new Metadata());
     }
 
+
     public Instances loadPredictionInstancesFromCsv(Path csvPath,
-                                                           DatasetConfiguration config,
-                                                           AlgorithmType algoType) throws Exception {
-        logger.info("📥 Loading CSV file from: {}", csvPath);
+                                                    DatasetConfiguration config,
+                                                    AlgorithmType algoType) throws Exception {
+        log.info("📥 [SIMPLE] Loading prediction dataset from CSV: {}", csvPath);
 
-        // 1. Αν είναι .csv → μετατροπή σε .arff
+        // 1. Μετατροπή σε ARFF
         String arffPath = DatasetUtil.csvToArff(Files.newInputStream(csvPath), csvPath.getFileName().toString());
-        logger.info("🔄 Converted to ARFF: {}", arffPath);
-
-        // 2. Φόρτωσε ARFF ως Instances
         Instances data = new ConverterUtils.DataSource(arffPath).getDataSet();
-        logger.info("✅ Loaded ARFF with {} instances and {} attributes", data.numInstances(), data.numAttributes());
+        log.info("✅ Loaded ARFF with {} instances and {} attributes", data.numInstances(), data.numAttributes());
 
-        AlgorithmTypeEnum type = algoType.getName();
-        logger.info("🧪 Algorithm type resolved: {}", type);
-        logger.info("👉 Is classification? {}", type == AlgorithmTypeEnum.CLASSIFICATION);
-
-        if (type != AlgorithmTypeEnum.CLUSTERING) {
-            int classIndex;
-            if (config.getTargetColumn() != null) {
-                classIndex = Integer.parseInt(config.getTargetColumn()) - 1;
-            } else {
-                classIndex = data.numAttributes() - 1;
-            }
-
-            if (classIndex < 0 || classIndex >= data.numAttributes()) {
-                throw new IllegalArgumentException("❌ Invalid class index: " + classIndex);
-            }
-
-            data.setClassIndex(classIndex);
-            logger.info("🎯 Set class index to: {} ({})", classIndex, data.classAttribute().name());
-        }
-
-        // 3. Αν είναι classification, διόρθωσε το class attribute (αν είναι STRING)
-        if (algoType.getName() == AlgorithmTypeEnum.CLASSIFICATION && !AlgorithmUtil.isRegression(data)) {
+        // 2. Αν είναι classification ➤ inject nominal class column
+        if (algoType.getName() == AlgorithmTypeEnum.CLASSIFICATION && config.getTargetColumn() != null) {
             String classAttrName = DatasetUtil.resolveClassAttributeName(config, data);
+            Attribute classAttr = data.attribute(classAttrName);
 
-            String[] minioPathParts = resolveDatasetMinioInfo(config.getDataset());
+            if (classAttr != null && DatasetUtil.hasMissingValues(data, classAttr.index())) {
+                log.info("🎯 Set class index to: {} ({})", classAttr.index(), classAttr.name());
 
-            String bucketName = minioPathParts[0];
-            String objectName = minioPathParts[1];
-            logger.info("Bucket Name: {}", bucketName);
-            logger.info("Object Name: {}", objectName);
+                if (!classAttr.isNominal()) {
+                    log.warn("⚠️ Class attribute is not nominal. Attempting to inject nominal class labels...");
 
-            InputStream datasetStream =  minioService.loadObjectAsInputStream(bucketName, objectName);
-            List<String> classValues = DatasetUtil. extractClassValuesFromTrainingDataset(config, datasetStream, objectName);
-            DatasetUtil.forceNominalClassIfNeeded(data, classAttrName, classValues);
+                    // ➕ Ανάκτηση class labels από το training dataset στο MinIO
+                    String[] pathParts = DatasetUtil.resolveDatasetMinioInfo(config.getDataset());
+                    String bucket = pathParts[0];
+                    String objectName = pathParts[1];
+
+                    try (InputStream trainingStream = minioService.loadObjectAsInputStream(bucket, objectName)) {
+                        Instances trainingData = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(config, trainingStream, objectName);
+                        Attribute trainingClassAttr = trainingData.classAttribute();
+                        if (trainingClassAttr == null) {
+                            throw new IllegalStateException("Training dataset does not contain a class attribute");
+                        }
+                        if (!trainingClassAttr.isNominal()) {
+                            log.warn("⚠️ Training class attribute is not nominal. Skipping nominal injection.");
+                            // Do not inject anything. Just return as-is.
+                            return DatasetUtil.selectColumns(
+                                    data,
+                                    config.getBasicAttributesColumns(),
+                                    config.getTargetColumn(),
+                                    1
+                            );
+                        }
+
+                        List<String> classValuesFromTraining = Collections.list(trainingClassAttr.enumerateValues())
+                                .stream()
+                                .map(Object::toString)
+                                .collect(Collectors.toList());
+
+                        data = DatasetUtil.injectNominalClassFromTraining(data, classAttrName, classValuesFromTraining);
+                        log.info("✅ Nominal class attribute injected successfully");
+                    }
+                }
+            } else {
+                log.warn("⚠️ Class attribute '{}' not found or no missing values.", classAttrName);
+            }
         }
 
-        // 4. Επέλεξε τα σωστά attributes
+        // 3. Επιλογή βασικών στηλών (feature columns)
         return DatasetUtil.selectColumns(
                 data,
                 config.getBasicAttributesColumns(),
@@ -308,5 +318,5 @@ public class DatasetService {
                 1 // prediction mode
         );
     }
-
 }
+

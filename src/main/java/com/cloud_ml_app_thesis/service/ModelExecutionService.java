@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import weka.classifiers.Classifier;
 import weka.clusterers.Clusterer;
 import weka.core.Attribute;
+import weka.core.Instance;
 import weka.core.Instances;
 
 import java.io.*;
@@ -89,7 +90,6 @@ public class ModelExecutionService {
 
         try {
             DatasetConfiguration config = (DatasetConfiguration) Hibernate.unproxy(model.getTraining().getDatasetConfiguration());
-            AlgorithmTypeEnum type = model.getTraining().getAlgorithmConfiguration().getAlgorithm().getType().getName();
             AlgorithmConfiguration algorithmConfiguration = (AlgorithmConfiguration) Hibernate.unproxy(model.getTraining().getAlgorithmConfiguration());
             AlgorithmType algorithmType = algorithmConfiguration.getAlgorithmType();
             String predictBucket = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
@@ -169,7 +169,6 @@ public class ModelExecutionService {
         }
     }
 
-
     public ByteArrayResource getExecutionResultsFile(Integer modelExecutionId, User user) {
         logger.debug("📥 Fetching result for execution id = {} by user={}", modelExecutionId, user.getUsername());
 
@@ -202,72 +201,72 @@ public class ModelExecutionService {
         return new ByteArrayResource(resultBytes);
     }
 
-    private List<String> predictWithClassifier(Classifier classifier, Instances dataset) throws Exception {
-        logger.info("⚙️ [Classifier] Dataset info before prediction:");
-        logger.info("   ➤ Number of instances: {}", dataset.numInstances());
-        logger.info("   ➤ Number of attributes: {}", dataset.numAttributes());
-        logger.info("   ➤ Class index: {}", dataset.classIndex());
-        dataset.setClassIndex(dataset.numAttributes() - 1);
-        logger.info("   ➤ Class index: {}", dataset.classIndex());
-
-        Attribute classAttribute = dataset.classAttribute();
-
-        if (classAttribute != null) {
-            logger.info("   ➤ Class attribute name: {}", classAttribute.name());
-            logger.info("   ➤ Class attribute isNominal: {}", classAttribute.isNominal());
-            logger.info("   ➤ Class attribute isNumeric: {}", classAttribute.isNumeric());
-
-            if (classAttribute.isNominal()) {
-                for (int i = 0; i < classAttribute.numValues(); i++) {
-                    logger.info("   ➤ Class nominal value [{}]: {}", i, classAttribute.value(i));
-                }
-            }
-        } else {
-            logger.warn("   ⚠️ Class attribute is NULL!");
-        }
-
-        logger.info("Performing prediction with classifier on dataset with {} instances", dataset.numInstances());
-
+    public List<String> predictWithClassifier(Classifier classifier, Instances instances) throws Exception {
         List<String> predictions = new ArrayList<>();
-        for (int i = 0; i < dataset.numInstances(); i++) {
-            try {
-                double prediction = classifier.classifyInstance(dataset.instance(i));
 
-                String predictedValue;
-                if (classAttribute.isNominal()) {
-                    predictedValue = classAttribute.value((int) prediction); // Classification
-                } else {
-                    predictedValue = String.valueOf(prediction); // Regression
-                }
-
-                logger.info("Instance {}: Predicted value: {}", i, predictedValue);
-                predictions.add(predictedValue);
-
-            } catch (Exception e) {
-                logger.error("Error predicting instance {}: {}", i, e.getMessage(), e);
-                throw e;
-            }
+        if (instances.classIndex() == -1) {
+            throw new IllegalStateException("❌ Class index is not set in the prediction dataset.");
         }
 
-        logger.info("Predictions completed successfully. Total predictions: {}", predictions.size());
+        Attribute classAttr = instances.classAttribute();
+        log.info("⚙️ [Classifier] Dataset info before prediction:");
+        log.info("    ➤ Number of instances: {}", instances.numInstances());
+        log.info("    ➤ Number of attributes: {}", instances.numAttributes());
+        log.info("    ➤ Class index: {}", instances.classIndex());
+        log.info("    ➤ Class attribute name: {}", classAttr.name());
+        log.info("    ➤ Class attribute isNominal: {}", classAttr.isNominal());
+        log.info("    ➤ Class attribute isNumeric: {}", classAttr.isNumeric());
+
+        for (int i = 0; i < instances.numInstances(); i++) {
+            Instance instance = instances.instance(i);
+            double pred = classifier.classifyInstance(instance);
+
+            String predictedLabel;
+
+            if (classAttr.isNominal()) {
+                // Classification: return label
+                int classIndex = (int) pred;
+                predictedLabel = classAttr.value(classIndex);
+            } else {
+                // Regression: return value
+                predictedLabel = String.valueOf(pred);
+            }
+
+            predictions.add(predictedLabel);
+            log.info("📌 Instance {}: Predicted value: {}", i, predictedLabel);
+        }
+
+        log.info("🔍 Classifier class labels: {}", Arrays.toString(instances.classAttribute().toString().split(",")));
+        log.info("✅ Predictions completed successfully. Total: {}", predictions.size());
         return predictions;
     }
+
+//    private List<String> predictWithClusterer(Clusterer clusterer, Instances dataset) throws Exception {
+//        logger.info("Performing prediction with clusterer on dataset with {} instances", dataset.numInstances());
+//        List<String> predictions = new ArrayList<>();
+//        for (int i = 0; i < dataset.numInstances(); i++) {
+//            try {
+//                int cluster = clusterer.clusterInstance(dataset.instance(i));
+//                String clusterLabel = "Cluster " + cluster; // Here you can map to more meaningful labels if available
+//                logger.info("Instance {}: Predicted cluster: {}", i, clusterLabel);
+//                predictions.add(clusterLabel);
+//            } catch (Exception e) {
+//                logger.error("Error predicting instance {}: {}", i, e.getMessage(), e);
+//                throw e; // Re-throw the exception after logging it
+//            }
+//        }
+//        logger.info("Cluster predictions completed successfully. Total predictions: {}", predictions.size());
+//        return predictions;
+//    }
 
     private List<String> predictWithClusterer(Clusterer clusterer, Instances dataset) throws Exception {
         logger.info("Performing prediction with clusterer on dataset with {} instances", dataset.numInstances());
         List<String> predictions = new ArrayList<>();
         for (int i = 0; i < dataset.numInstances(); i++) {
-            try {
-                int cluster = clusterer.clusterInstance(dataset.instance(i));
-                String clusterLabel = "Cluster " + cluster; // Here you can map to more meaningful labels if available
-                logger.info("Instance {}: Predicted cluster: {}", i, clusterLabel);
-                predictions.add(clusterLabel);
-            } catch (Exception e) {
-                logger.error("Error predicting instance {}: {}", i, e.getMessage(), e);
-                throw e; // Re-throw the exception after logging it
-            }
+            int cluster = clusterer.clusterInstance(dataset.instance(i));
+            logger.info("Instance {}: Predicted cluster: {}", i, cluster);
+            predictions.add(String.valueOf(cluster));  // 👈 απλό αριθμητικό string
         }
-        logger.info("Cluster predictions completed successfully. Total predictions: {}", predictions.size());
         return predictions;
     }
 }

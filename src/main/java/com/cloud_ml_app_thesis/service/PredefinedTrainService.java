@@ -104,16 +104,16 @@ public class PredefinedTrainService {
 
             String fixedRawOptions = AlgorithmUtil.fixNestedOptions(config.getOptions());
             AlgorithmType algorithmType;
+            log.info("➡️ Class index set to: " + data.classIndex());
+            log.info("➡️ Class attribute name: " + data.classAttribute().name());
             if (isClassifier && AlgorithmUtil.isClassification(data)) {
                 log.info("📊 Classification detected");
-
-                Instances train = new Instances(data, 0, trainSize);
 
                 Classifier cls = AlgorithmUtil.getClassifierInstance(algorithmClassName);
 
                 String[] optionsArray = Utils.splitOptions(fixedRawOptions);                //TODO exception ??
                 AlgorithmUtil.setClassifierOptions(cls, optionsArray);
-                cls.buildClassifier(train);
+                cls.buildClassifier(trainData);
                 evaluationResult = modelService.evaluateClassifier(cls, trainData, testData);
                 results = evaluationResult.getSummary();
                 algorithmType = algorithmTypeRepository.findByName(AlgorithmTypeEnum.CLASSIFICATION).orElseThrow(() -> new EntityNotFoundException("AlgorithmType not found"));
@@ -128,7 +128,7 @@ public class PredefinedTrainService {
 
                 String[] optionsArray = Utils.splitOptions(fixedRawOptions);                //TODO exception ??
                 AlgorithmUtil.setClassifierOptions(cls, optionsArray);
-                cls.buildClassifier(train);
+                cls.buildClassifier(trainData);
                 regressionEvaluationResult = modelService.evaluateRegressor(cls, trainData, testData);
                 results = regressionEvaluationResult.getSummary();
                 algorithmType = algorithmTypeRepository.findByName(AlgorithmTypeEnum.REGRESSION).orElseThrow(() -> new EntityNotFoundException("AlgorithmType not found"));

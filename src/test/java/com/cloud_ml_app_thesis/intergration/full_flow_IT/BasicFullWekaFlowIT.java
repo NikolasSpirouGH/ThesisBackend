@@ -49,7 +49,7 @@ public class BasicFullWekaFlowIT {
                 .contentType(ContentType.MULTIPART)
                 .multiPart("file", trainFile)
                 .multiPart("algorithmId", 9)
-                .multiPart("basicCharacteristicsColumns", "1,2,3,4")
+                .multiPart("basicCharacteristicsColumns", "1,2,3")
                 .multiPart("targetClassColumn", "5")
                 .when()
                 .post("/api/train/train-model")

@@ -74,5 +74,5 @@ select * from Datasets;
 select *
 from models;
 
-
+select * from algorithms where class_name='weka.classifiers.functions.LinearRegression';
 
