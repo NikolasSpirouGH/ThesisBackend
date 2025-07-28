@@ -54,25 +54,6 @@ public class VisualizationService {
         if(!user.getUsername().equals(model.getTraining().getUser().getUsername()) && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to train this algorithm");
         }
-        if (model.getModelType().getName().equals(ModelTypeEnum.PREDEFINED)) {
-            try {
-                DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
-                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
-
-                Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-
-                log.info("Dataset in virtualization: {}", data);
-
-                if (!AlgorithmUtil.isClassification(data)) {
-                    throw new BadRequestException("The model with ID " + modelId + " is not a classification model.");
-                }
-
-            } catch (Exception e) {
-                log.error("❌ Failed to load dataset for modelId={} from MinIO", modelId, e);
-                throw new RuntimeException("Problem loading dataset from MinIO for modelId=" + modelId, e);
-            }
-        }
 
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
@@ -129,27 +110,10 @@ public class VisualizationService {
                 .orElseThrow(() -> new EntityNotFoundException("Model not found"));
 
         if (!user.getUsername().equals(model.getTraining().getUser().getUsername())
-                && model.getAccessibility().equals(ModelAccessibilityEnum.PRIVATE)) {
+                && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to access this model");
         }
-        if (model.getModelType().getName().equals(ModelTypeEnum.PREDEFINED)) {
-        try {
-            DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
-            String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-            InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
 
-                Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-                log.info("Dataset in virtualization: {}", data);
-
-                if (!AlgorithmUtil.isClassification(data)) {
-                    throw new BadRequestException("The model with ID " + modelId + " is not a classification model.");
-                }
-
-            } catch(Exception e){
-                log.error("❌ Failed to load dataset for modelId={} from MinIO", modelId, e);
-                throw new RuntimeException("Problem loading dataset from MinIO for modelId=" + modelId, e);
-            }
-        }
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
             throw new IllegalArgumentException("Model does not contain metrics URL");
@@ -232,24 +196,6 @@ public class VisualizationService {
             throw new AuthorizationDeniedException("User not authorized to access this model");
         }
 
-        if (model.getModelType().getName().equals(ModelTypeEnum.PREDEFINED)) {
-            try {
-                DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
-                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
-
-                Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-                log.info("Dataset in virtualization: {}", data);
-
-                if (!AlgorithmUtil.isRegression(data)) {
-                    throw new BadRequestException("The model with ID " + modelId + " is not a regression model.");
-                }
-
-            } catch (Exception e) {
-                log.error("❌ Failed to load dataset for modelId={} from MinIO", modelId, e);
-                throw new RuntimeException("Problem loading dataset from MinIO for modelId=" + modelId, e);
-            }
-        }
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
             throw new IllegalArgumentException("Model does not contain metrics URL");
@@ -322,25 +268,6 @@ public class VisualizationService {
         if (!user.getUsername().equals(model.getTraining().getUser().getUsername())
                 && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to access this model");
-        }
-
-        if (model.getModelType().getName().equals(ModelTypeEnum.PREDEFINED)) {
-            try {
-                DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
-                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
-
-                Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-                log.info("Dataset in virtualization: {}", data);
-
-                if (!AlgorithmUtil.isRegression(data)) {
-                    throw new BadRequestException("The model with ID " + modelId + " is not a regression model.");
-                }
-
-            } catch (Exception e) {
-                log.error("❌ Failed to load dataset for modelId={} from MinIO", modelId, e);
-                throw new RuntimeException("Problem loading dataset from MinIO for modelId=" + modelId, e);
-            }
         }
 
         String metricsUrl = model.getMetricsUrl();
@@ -427,20 +354,6 @@ public class VisualizationService {
 //                throw new BadRequestException("The model with ID " + modelId + " is not a clustering model.");
 //            }
 
-        if (model.getModelType().getName().equals(ModelTypeEnum.PREDEFINED)) {
-            try {
-                DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
-                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
-
-                Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-                log.info("Dataset in virtualization: {}", data);
-
-            } catch (Exception e) {
-                log.error("❌ Failed to load dataset for modelId={} from MinIO", modelId, e);
-                throw new RuntimeException("Problem loading dataset from MinIO for modelId=" + modelId, e);
-            }
-        }
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
             throw new IllegalArgumentException("Model does not contain metrics URL");
@@ -492,94 +405,85 @@ public class VisualizationService {
         }
     }
 
-//    public ByteArrayResource generateClusterScatterPlot(Integer modelId, User user) {
-//        Model model = modelRepository.findById(modelId)
-//                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
-//
-//        if (!user.getUsername().equals(model.getTraining().getUser().getUsername())
-//                && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
-//            throw new AuthorizationDeniedException("User not authorized to access this model");
-//        }
-//
-//        String metricsUrl = model.getMetricsUrl();
-//        if (metricsUrl == null || metricsUrl.isBlank()) {
-//            throw new IllegalArgumentException("Model does not contain metrics URL");
-//        }
-//            try {
-//                // 📥 Load training dataset (x, y values)
-//                DatasetConfiguration datasetConf = datasetConfigurationRepository.findById(model.getTraining().getDatasetConfiguration().getId()).orElseThrow(() -> new EntityNotFoundException("Could not found Dataset for metrics generation"));
-//                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-//                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
-//
-//                Instances data = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-//                if (data.numAttributes() < 2) {
-//                    throw new IllegalStateException("Dataset must contain at least two numeric attributes for scatter plot");
-//                }
-//            }catch(Exception e){
-//                log.error("❌ Failed to load dataset for modelId={} from MinIO", modelId, e);
-//                throw new RuntimeException("Problem loading dataset from MinIO for modelId=" + modelId, e);
-//            }
-//            // 📥 Load cluster assignments
-//            try {
-//            String key = minioService.extractMinioKey(metricsUrl);
-//            String bucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
-//            byte[] content = minioService.downloadObjectAsBytes(bucket, key);
-//            ObjectMapper mapper = new ObjectMapper();
-//            JsonNode json = mapper.readTree(content);
-//            JsonNode assignments = json.get("clusterAssignments");
-//
-//            if (assignments == null || !assignments.isArray()) {
-//                throw new IllegalArgumentException("clusterAssignments not found in metrics.json");
-//            }
-//
-//            // 👇 Extract assigned cluster per instance
-//            List<Integer> clusterAssignments = new ArrayList<>();
-//            for (JsonNode node : assignments) {
-//                String line = node.asText(); // e.g., "Instance 0 assigned to cluster 1"
-//                int clusterIndex = Integer.parseInt(line.split("cluster")[1].trim());
-//                clusterAssignments.add(clusterIndex);
-//            }
-//
-//            // 📊 Prepare points grouped by cluster
-//            Map<Integer, List<Double>> xMap = new HashMap<>();
-//            Map<Integer, List<Double>> yMap = new HashMap<>();
-//
-//            for (int i = 0; i < data.numInstances(); i++) {
-//                int cluster = clusterAssignments.get(i);
-//                double x = data.instance(i).value(0); // first attribute
-//                double y = data.instance(i).value(1); // second attribute
-//
-//                xMap.computeIfAbsent(cluster, k -> new ArrayList<>()).add(x);
-//                yMap.computeIfAbsent(cluster, k -> new ArrayList<>()).add(y);
-//            }
-//
-//            XYChart chart = new XYChartBuilder()
-//                    .width(600)
-//                    .height(500)
-//                    .title("Clustered Instances")
-//                    .xAxisTitle(data.attribute(0).name())
-//                    .yAxisTitle(data.attribute(1).name())
-//                    .build();
-//
-//            for (Integer clusterId : xMap.keySet()) {
-//                chart.addSeries("Cluster " + clusterId, xMap.get(clusterId), yMap.get(clusterId))
-//                        .setXYSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Scatter);
-//            }
-//
-//            chart.getStyler().setLegendVisible(true);
-//            chart.getStyler().setChartBackgroundColor(Color.WHITE);
-//            chart.getStyler().setPlotGridLinesVisible(true);
-//            chart.getStyler().setMarkerSize(6);
-//
-//            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-//            BitmapEncoder.saveBitmap(chart, baos, BitmapEncoder.BitmapFormat.PNG);
-//            return new ByteArrayResource(baos.toByteArray());
-//
-//        } catch (Exception e) {
-//            log.error("📉 Failed to generate cluster scatter plot for modelId={}", modelId, e);
-//            throw new RuntimeException("Unable to generate cluster scatter plot", e);
-//        }
-//    }
+    public ByteArrayResource generateClusterScatterPlot(Integer modelId, User user) {
+        Model model = modelRepository.findById(modelId)
+                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
+
+        if (!user.getUsername().equals(model.getTraining().getUser().getUsername())
+                && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
+            throw new AuthorizationDeniedException("User not authorized to access this model");
+        }
+
+        String metricsUrl = model.getMetricsUrl();
+
+        if (metricsUrl == null || metricsUrl.isBlank()) {
+            throw new IllegalArgumentException("Model does not contain metrics URL");
+        }
+            // 📥 Load cluster assignments
+            try {
+            String key = minioService.extractMinioKey(metricsUrl);
+            String bucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
+            byte[] content = minioService.downloadObjectAsBytes(bucket, key);
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode json = mapper.readTree(content);
+            JsonNode assignments = json.get("clusterAssignments");
+
+            if (assignments == null || !assignments.isArray()) {
+                throw new IllegalArgumentException("clusterAssignments not found in metrics.json");
+            }
+
+            // 👇 Extract assigned cluster per instance
+            List<Integer> clusterAssignments = new ArrayList<>();
+            for (JsonNode node : assignments) {
+                String line = node.asText(); // e.g., "Instance 0 assigned to cluster 1"
+                int clusterIndex = Integer.parseInt(line.split("cluster")[1].trim());
+                clusterAssignments.add(clusterIndex);
+            }
+
+                JsonNode projection = json.get("projection2D");
+                if (projection == null || !projection.isArray()) {
+                    throw new IllegalArgumentException("projection2D not found in metrics.json");
+                }
+
+                Map<Integer, List<Double>> xMap = new HashMap<>();
+                Map<Integer, List<Double>> yMap = new HashMap<>();
+
+                for (int i = 0; i < projection.size(); i++) {
+                    int cluster = clusterAssignments.get(i);
+                    double x = projection.get(i).get("x").asDouble();
+                    double y = projection.get(i).get("y").asDouble();
+
+                    xMap.computeIfAbsent(cluster, k -> new ArrayList<>()).add(x);
+                    yMap.computeIfAbsent(cluster, k -> new ArrayList<>()).add(y);
+                }
+
+                XYChart chart = new XYChartBuilder()
+                        .width(600)
+                        .height(500)
+                        .title("Clustered Instances")
+                        .xAxisTitle("X")
+                        .yAxisTitle("Y")
+                        .build();
+
+                for (Integer clusterId : xMap.keySet()) {
+                    chart.addSeries("Cluster " + clusterId, xMap.get(clusterId), yMap.get(clusterId))
+                            .setXYSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Scatter);
+                }
+
+            chart.getStyler().setLegendVisible(true);
+            chart.getStyler().setChartBackgroundColor(Color.WHITE);
+            chart.getStyler().setPlotGridLinesVisible(true);
+            chart.getStyler().setMarkerSize(6);
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            BitmapEncoder.saveBitmap(chart, baos, BitmapEncoder.BitmapFormat.PNG);
+            return new ByteArrayResource(baos.toByteArray());
+
+        } catch (Exception e) {
+            log.error("📉 Failed to generate cluster scatter plot for modelId={}", modelId, e);
+            throw new RuntimeException("Unable to generate cluster scatter plot", e);
+        }
+    }
 
 
 }

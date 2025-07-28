@@ -103,20 +103,20 @@ public class ModelController {
         return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(image);
     }
 
-//    @GetMapping("/metrics-scatter-cluster/model/{modelId}")
-//    @Operation(summary = "📊 Cluster scatter plot",
-//            description = "Returns a scatter plot showing instances grouped by their assigned cluster based on the training dataset and metrics.json")
-//    public ResponseEntity<ByteArrayResource> getClusterScatterPlot(
-//            @PathVariable("modelId") Integer modelId,
-//            @AuthenticationPrincipal AccountDetails accountDetails) {
-//
-//        ByteArrayResource resource = visualizationService.generateClusterScatterPlot(modelId, accountDetails.getUser());
-//
-//        return ResponseEntity.ok()
-//                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=cluster_scatter_plot.png")
-//                .contentType(MediaType.IMAGE_PNG)
-//                .body(resource);
-//    }
+    @GetMapping("/metrics-scatter-cluster/model/{modelId}")
+    @Operation(summary = "📊 Cluster scatter plot",
+            description = "Returns a scatter plot showing instances grouped by their assigned cluster based on the training dataset and metrics.json")
+    public ResponseEntity<ByteArrayResource> getClusterScatterPlot(
+            @PathVariable("modelId") Integer modelId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+
+        ByteArrayResource resource = visualizationService.generateClusterScatterPlot(modelId, accountDetails.getUser());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=cluster_scatter_plot.png")
+                .contentType(MediaType.IMAGE_PNG)
+                .body(resource);
+    }
 
 
     @Operation(

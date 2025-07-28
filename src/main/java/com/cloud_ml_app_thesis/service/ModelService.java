@@ -33,6 +33,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+import weka.filters.Filter;
+import weka.filters.unsupervised.attribute.PrincipalComponents;
 import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
 import weka.clusterers.ClusterEvaluation;
@@ -40,6 +42,8 @@ import weka.clusterers.Clusterer;
 import weka.core.Instance;
 import weka.core.Instances;
 
+
+import java.awt.geom.Point2D;
 import java.io.*;
 import java.net.URI;
 import java.time.ZoneId;
@@ -267,19 +271,42 @@ public class ModelService {
 
         int numClusters = eval.getNumClusters();
         double logLikelihood = eval.getLogLikelihood();
+
         String[] assignments = new String[data.numInstances()];
         for (int i = 0; i < data.numInstances(); i++) {
             assignments[i] = "Instance " + i + " assigned to cluster " + clusterer.clusterInstance(data.instance(i));
+        }
+
+        // 👇 Optional: remove class attribute (if present)
+        Instances dataWithoutClass = new Instances(data);
+        if (dataWithoutClass.classIndex() != -1) {
+            dataWithoutClass.setClassIndex(-1);
+            dataWithoutClass.deleteAttributeAt(data.classIndex());
+        }
+
+        PrincipalComponents pcaFilter = new PrincipalComponents();
+        pcaFilter.setMaximumAttributes(2);
+        pcaFilter.setCenterData(true);
+        pcaFilter.setVarianceCovered(1.0);
+        pcaFilter.setInputFormat(dataWithoutClass);
+
+        Instances projected = Filter.useFilter(dataWithoutClass, pcaFilter);
+
+        List<Point2D> projection2D = new ArrayList<>();
+        for (int i = 0; i < projected.numInstances(); i++) {
+            double x = projected.instance(i).value(0);
+            double y = projected.instance(i).value(1);
+            projection2D.add(new Point2D.Double(x, y)); // or custom Point2D(x, y)
         }
 
         return new ClusterEvaluationResult(
                 numClusters,
                 logLikelihood,
                 assignments,
-                eval.clusterResultsToString()
+                eval.clusterResultsToString(),
+                projection2D  // 👈 Add this new field to your DTO
         );
     }
-
 
     public String generateMinioUrl(String bucket, String objectKey) {
         return minioUrl + "/" + bucket + "/" + objectKey;

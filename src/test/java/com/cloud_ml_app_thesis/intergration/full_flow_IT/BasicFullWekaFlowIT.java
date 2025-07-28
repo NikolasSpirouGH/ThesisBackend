@@ -42,15 +42,15 @@ public class BasicFullWekaFlowIT {
     @Test
     @Order(1)
     void shouldTrainDataWithWekaAlgorithm() throws IOException {
-        File trainFile = new ClassPathResource("datasets/dataset2.csv").getFile();
+        File trainFile = new ClassPathResource("datasets/clusters.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
                 .contentType(ContentType.MULTIPART)
                 .multiPart("file", trainFile)
-                .multiPart("algorithmId", 9)
-                .multiPart("basicCharacteristicsColumns", "1,2,3")
-                .multiPart("targetClassColumn", "5")
+                .multiPart("algorithmId", 67)
+          //      .multiPart("basicCharacteristicsColumns", "1,2,3")
+          //      .multiPart("targetClassColumn", "5")
                 .when()
                 .post("/api/train/train-model")
                 .then()
@@ -118,7 +118,7 @@ public class BasicFullWekaFlowIT {
     @Order(3)
     void shouldPredictModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
-        File predictionFile = new ClassPathResource("datasets/prediction_nominal.csv").getFile();
+        File predictionFile = new ClassPathResource("datasets/prediction_clustering.csv").getFile();
 
         Response predictionResponse = given()
                 .port(port)
@@ -153,6 +153,29 @@ public class BasicFullWekaFlowIT {
 
         System.out.println("Execution ID: " + executionId);
 
+    }
+
+    @Test
+    @Order(5)
+    void shouldDownloadPredictionResultFile() {
+        Assumptions.assumeTrue(modelId != null, "Skipping test because modelId is null");
+
+        Assertions.assertNotNull(this.executionId, "❌ executionId is null");
+
+        Response downloadResponse = given()
+                .port(port)
+                .header("Authorization", "Bearer " + jwtToken)
+                .get("/api/model-exec/{executionId}/result", this.executionId)
+                .then()
+                .statusCode(200)
+                .extract()
+                .response();
+
+        byte[] predictionFile = downloadResponse.getBody().asByteArray();
+
+        Assertions.assertTrue(predictionFile.length > 0, "❌ Downloaded prediction file is empty");
+
+        System.out.println("📥 Prediction result downloaded successfully. Bytes: " + predictionFile.length);
     }
 
     private void waitForTaskCompletion(String taskId) {

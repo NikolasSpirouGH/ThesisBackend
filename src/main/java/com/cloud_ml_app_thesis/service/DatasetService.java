@@ -264,7 +264,7 @@ public class DatasetService {
         log.info("✅ Loaded ARFF with {} instances and {} attributes", data.numInstances(), data.numAttributes());
 
         // 2. Αν είναι classification ➤ inject nominal class column
-        if (algoType.getName() == AlgorithmTypeEnum.CLASSIFICATION && config.getTargetColumn() != null) {
+        if (algoType.getName() == AlgorithmTypeEnum.CLASSIFICATION) {
             String classAttrName = DatasetUtil.resolveClassAttributeName(config, data);
             Attribute classAttr = data.attribute(classAttrName);
 
