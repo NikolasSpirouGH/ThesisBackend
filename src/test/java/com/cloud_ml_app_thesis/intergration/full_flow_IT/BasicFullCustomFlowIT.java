@@ -4,9 +4,8 @@ import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.*;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 import java.io.File;
@@ -16,17 +15,13 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.fail;
 
-
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestPropertySource(properties = {
         "spring.main.allow-bean-definition-overriding=true"
 })
 public class BasicFullCustomFlowIT {
-
-    @LocalServerPort
-     int port;
 
     String jwtToken ;
     Integer modelId;
@@ -37,7 +32,7 @@ public class BasicFullCustomFlowIT {
 
     @BeforeEach
     void setUp() {
-        RestAssured.port = port;
+        RestAssured.port = 8080;
         RestAssured.baseURI = "http://localhost";
         loginAndSetToken();
     }
@@ -46,7 +41,7 @@ public class BasicFullCustomFlowIT {
     @Order(1)
     void shouldCreateCustomAlgorithm() throws IOException {
         File parametersFile = new ClassPathResource("parameters/defaults.json").getFile();
-        File dockerTarFile = new ClassPathResource("algorithms/classification.tar").getFile();
+        File dockerTarFile = new ClassPathResource("algorithms/bigspy_logreg.tar").getFile();
 
         Response response = given()
                 .auth().oauth2(jwtToken)
@@ -56,10 +51,11 @@ public class BasicFullCustomFlowIT {
                 .multiPart("accessibility", "PUBLIC")
                 .multiPart("keywords", "ml", "classification")
                 .multiPart("parametersFile", parametersFile)
-                .multiPart("dockerTarFile", dockerTarFile)
+                .multiPart("dockerHubUrl", "paradoxsenpai/linearreg:1.0.0")
                 .when()
                 .post("/api/algorithms/createCustomAlgorithm")
                 .then()
+                .log().all()
                 .statusCode(200)
                 .body("message", containsString("Algorithm created successfully"))
                 .extract()
@@ -76,15 +72,15 @@ public class BasicFullCustomFlowIT {
     @Test
     @Order(2)
     void shouldTrainCustomModel() throws IOException {
-        Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
+       // Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
 
-        File datasetFile = new ClassPathResource("datasets/dataset2.csv").getFile();
+        File datasetFile = new ClassPathResource("datasets/custom_train_numerical.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
                 .contentType(ContentType.MULTIPART)
                 .multiPart("datasetFile", datasetFile)
-                .multiPart("algorithmId", algorithmId)
+                .multiPart("algorithmId", 14)
                 .when()
                 .post("/api/train/custom")
                 .then()
@@ -101,7 +97,6 @@ public class BasicFullCustomFlowIT {
         waitForTaskCompletion(taskId);
 
         modelId = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .when()
                 .get("/api/tasks/{taskId}/model-id", taskId)
@@ -133,7 +128,6 @@ public class BasicFullCustomFlowIT {
         """;
 
         Response finalizedResponse = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .contentType(ContentType.JSON)
                 .body(finalizePayload)
@@ -158,10 +152,9 @@ public class BasicFullCustomFlowIT {
     void shouldPredictCustomModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
 
-        File predictionFile = new ClassPathResource("datasets/prediction_nominal_custom.csv").getFile();
+        File predictionFile = new ClassPathResource("datasets/custom_prediction_numerical.csv").getFile();
 
         Response predictionResponse = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .contentType(ContentType.MULTIPART)
                 .multiPart("predictionFile", predictionFile)
@@ -181,7 +174,6 @@ public class BasicFullCustomFlowIT {
         waitForTaskCompletion(predictionTaskId);
 
          executionId = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .get("/api/tasks/{taskId}/execution-id", predictionTaskId)
                 .then()
@@ -203,7 +195,6 @@ public class BasicFullCustomFlowIT {
         Assertions.assertNotNull(this.executionId, "❌ executionId is null");
 
         Response downloadResponse = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .get("/api/model-exec/{executionId}/result", this.executionId)
                 .then()
@@ -224,7 +215,6 @@ public class BasicFullCustomFlowIT {
 
         for (int i = 1; i <= maxTries; i++) {
             Response response = given()
-                    .port(port)
                     .header("Authorization", "Bearer " + jwtToken)
                     .get("/api/tasks/" + taskId)
                     .then()
@@ -263,7 +253,6 @@ public class BasicFullCustomFlowIT {
            """;
 
         Response response = given()
-                .port(port)
                 .contentType(ContentType.JSON)
                 .body(loginPayload)
                 .post("/api/auth/login")

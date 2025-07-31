@@ -128,11 +128,6 @@
         </dependency>
 
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-
-        <dependency>
             <groupId>com.github.docker-java</groupId>
             <artifactId>docker-java</artifactId>
             <version>3.3.6</version> <!-- Latest verified as of 2025-06 -->
@@ -142,6 +137,12 @@
             <groupId>com.github.docker-java</groupId>
             <artifactId>docker-java-transport-httpclient5</artifactId>
             <version>3.3.6</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.docker-java</groupId>
+            <artifactId>docker-java-transport-okhttp</artifactId>
+            <version>3.5.1</version>
         </dependency>
 
         <dependency>
@@ -173,6 +174,9 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>3.4.5</version>
+                <configuration>
+                    <mainClass>com.cloud_ml_app_thesis.CloudMlAppThesis</mainClass>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>

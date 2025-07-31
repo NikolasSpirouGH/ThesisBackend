@@ -71,6 +71,7 @@ public class UserController {
     }
 
     @Operation(summary = "Request password reset", description = "Allows a user to request a password reset by providing their email address.")
+    @PostMapping("/forgot-password")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Password reset email sent successfully."),
             @ApiResponse(responseCode = "400", description = "Invalid email address provided.")

@@ -1,4 +1,3 @@
-select custom_algorithm_id from trainings where id=5;
 
 select * from trainings order by started_date desc;
 
@@ -36,8 +35,6 @@ select * from async_task_status;
 
 select * from algorithms where class_name='weka.classifiers.functions.LinearRegression';
 
-select * from algorithm_configurations;
-
 select * from trainings;
 
 select * from users;
@@ -52,7 +49,6 @@ select * from const_model_types;
 
 select * from users;
 
-select * from algorithm_configurations;
 DELETE FROM trainings
 WHERE dataset_id IS NULL;
 
@@ -76,3 +72,8 @@ from models;
 
 select * from algorithms where class_name='weka.classifiers.functions.LinearRegression';
 
+select * from users;
+
+select * from custom_algorithms;
+
+select * from trainings;

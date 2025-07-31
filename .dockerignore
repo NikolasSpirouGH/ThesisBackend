@@ -1,8 +1,17 @@
-#target
-.dockerignore
-.git
-.gitignore
-.env
-.idea
+target/
+.idea/
 *.iml
 *.log
+.env
+*.csv
+*.json
+*.tar
+
+# Do not ignore Maven Wrapper
+!mvnw
+!.mvn
+
+# Optional excludes
+.git
+.dockerignore
+.gitignore

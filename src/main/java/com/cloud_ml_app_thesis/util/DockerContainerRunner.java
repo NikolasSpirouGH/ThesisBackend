@@ -3,15 +3,15 @@ package com.cloud_ml_app_thesis.util;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
+import com.github.dockerjava.api.command.InspectImageResponse;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientBuilder;
 import com.github.dockerjava.core.command.LogContainerResultCallback;
-import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import com.github.dockerjava.okhttp.OkDockerHttpClient;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,86 +29,106 @@ public class DockerContainerRunner {
     private final DockerClient dockerClient;
 
     public DockerContainerRunner() {
+        String dockerHost = "unix:///var/run/docker.sock";
+
         DefaultDockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost("tcp://localhost:2375") // Windows Docker Desktop daemon must expose this
+                .withDockerHost(dockerHost)
+                .withDockerTlsVerify(false)
                 .build();
 
-        ApacheDockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
+        log.info("🐳 Docker host in use: {}", config.getDockerHost());
+        OkDockerHttpClient httpClient = new OkDockerHttpClient.Builder()
                 .dockerHost(config.getDockerHost())
                 .sslConfig(config.getSSLConfig())
-                .connectionTimeout(Duration.ofSeconds(30))
-                .responseTimeout(Duration.ofMinutes(2))
+                .connectTimeout(30_000)   // 30 sec
+                .readTimeout(120_000)
                 .build();
-
         this.dockerClient = DockerClientBuilder.getInstance(config)
                 .withDockerHttpClient(httpClient)
                 .build();
     }
 
-    public void runTrainingContainer(String imageName, Path hostDataDir, Path hostModelDir){
-        log.info("Running training container with image={} ", imageName);
+    public void runTrainingContainer(String imageName, Path hostDataDir, Path hostModelDir) {
+        log.info("🐳 Starting training container using image='{}'", imageName);
+        log.info("📂 Mounting volumes:");
+        log.info("    • Host data dir  → /data  → {}", hostDataDir.toAbsolutePath());
+        log.info("    • Host model dir → /model → {}", hostModelDir.toAbsolutePath());
 
         Volume dataVolume = new Volume("/data");
         Volume modelVolume = new Volume("/model");
 
-       HostConfig hostConfig = HostConfig.newHostConfig().
-               withBinds(
-                       new Bind(hostDataDir.toString(), new Volume("/data")),
-                       new Bind(hostModelDir.toString(), new Volume("/model")));
+        Path expectedDataset = hostDataDir.resolve("dataset.csv");
+        if (!Files.exists(expectedDataset)) {
+            throw new IllegalStateException("❌ Missing dataset.csv at: " + expectedDataset);
+        }
 
-        log.info("📂 Mounting volumes: hostDataDir={} → /data, hostModelDir={} → /model", hostDataDir, hostModelDir);
+        if (!Files.exists(hostModelDir)) {
+            throw new IllegalStateException("❌ Output directory (modelDir) does not exist: " + hostModelDir);
+        }
+        HostConfig hostConfig = HostConfig.newHostConfig()
+                .withBinds(
+                        new Bind(hostDataDir.toAbsolutePath().toString(), dataVolume),
+                        new Bind(hostModelDir.toAbsolutePath().toString(), modelVolume)
+                );
 
-       CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
-               .withHostConfig(hostConfig)
-               .exec();
+        log.info("🔧 Creating container with host config...");
+        CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
+                .withHostConfig(hostConfig)
+                .exec();
 
-       String containerId = container.getId();
-       log.info("Created container ID={}", containerId);
+        String containerId = container.getId();
+        log.info("✅ Container created: ID={}", containerId);
 
-       dockerClient.startContainerCmd(containerId).exec();
-       log.info("Started container ID={}", containerId);
+        dockerClient.startContainerCmd(containerId).exec();
+        log.info("🚀 Container started: ID={}", containerId);
 
         try {
+            log.info("📡 Attaching to container logs...");
             dockerClient.logContainerCmd(containerId)
                     .withStdOut(true)
                     .withStdErr(true)
                     .withFollowStream(true)
-                    .exec(new LogContainerResultCallback(){
-                         @Override
-                        public void onNext(Frame frame){
-                             log.info("[CONTAINER LOG] {}", new String(frame.getPayload()).trim());
-                             super.onNext(frame );
-                         }
+                    .exec(new LogContainerResultCallback() {
+                        @Override
+                        public void onNext(Frame frame) {
+                            String logLine = new String(frame.getPayload()).trim();
+                            if (!logLine.isBlank()) {
+                                log.info("[CONTAINER LOG] {}", logLine);
+                            }
+                            super.onNext(frame);
+                        }
                     }).awaitCompletion(5, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            log.error("⛔ Interrupted while waiting for container logs", e);
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while waiting for container logs", e);
         }
 
+        log.info("⌛ Waiting for container to finish...");
         Integer exitCode = dockerClient.waitContainerCmd(containerId).start().awaitStatusCode();
 
-        if(exitCode != 0){
+        if (exitCode != 0) {
             log.error("❌ Container exited with non-zero code: {}", exitCode);
             throw new RuntimeException("Training container failed (exitCode=" + exitCode + ")");
         }
 
-        log.info("Container finished successfully");
+        log.info("✅ Container finished successfully (exitCode=0)");
     }
 
-    public void runPredictionContainer(String imageName, Path predictionDataset, Path modelFile, Path outputDir) {
+
+    public void runPredictionContainer(String imageName, Path dataDir, Path modelDir) {
         log.info("🚀 Starting prediction container with image={}", imageName);
-        log.info("Inside docker run container input file: {}", predictionDataset);
-        log.info("Inside docker run container model file: {}", modelFile);
-        log.info("Inside docker run container output dir: {}", outputDir);
+        log.info("🔗 Mount /data: {}", dataDir);
+        log.info("🔗 Mount /model: {}", modelDir);
 
         HostConfig hostConfig = HostConfig.newHostConfig().withBinds(
-                new Bind(predictionDataset.toString(), new Volume("/data/predict.csv")),
-                new Bind(modelFile.toString(), new Volume("/model/model.pkl")),
-                new Bind(outputDir.toString(), new Volume("/model"))
+                new Bind(dataDir.toString(), new Volume("/data")),
+                new Bind(modelDir.toString(), new Volume("/model"))
         );
 
         CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
                 .withHostConfig(hostConfig)
-                .withCmd("predict.py")
+                .withCmd( "predict.py")
                 .exec();
 
         String containerId = container.getId();
@@ -140,6 +160,7 @@ public class DockerContainerRunner {
     }
 
 
+
     private String getLatestImageId() {
         return dockerClient.listImagesCmd()
                 .withShowAll(true)
@@ -162,15 +183,19 @@ public class DockerContainerRunner {
 
     public void loadDockerImageFromTar(Path tarPath, String dockerImageTag) {
         log.info("🐳 Loading Docker image from TAR: {}", tarPath);
-
         try (InputStream tarInput = Files.newInputStream(tarPath)) {
             dockerClient.loadImageCmd(tarInput).exec();
+            log.info("✅ Docker image loaded from TAR");
         } catch (IOException e) {
             throw new FileProcessingException("❌ Failed to load Docker TAR", e);
         }
 
-        String imageId = getLatestImageId();
-        tagImage(imageId, dockerImageTag);
+        try {
+            InspectImageResponse inspect = dockerClient.inspectImageCmd(dockerImageTag).exec();
+            log.info("🔎 Loaded image ID: {}", inspect.getId());
+        } catch (Exception e) {
+            log.warn("⚠️ Image not found via tag '{}': {}", dockerImageTag, e.getMessage());
+        }
     }
 
     public void pullDockerImage(String imageName) {

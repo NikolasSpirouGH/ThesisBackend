@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -39,13 +40,14 @@ public class FileUtil {
     }
 
     public static Path getSharedPathRoot() {
-        // Αν εντοπιστεί περιβάλλον Docker/Kubernetes, χρησιμοποίησε το /shared
-        if (System.getenv("KUBERNETES_SERVICE_HOST") != null || System.getenv("RUNNING_IN_DOCKER") != null) {
-            return Path.of("/shared");
+        String runningInDocker = System.getenv("RUNNING_IN_DOCKER");
+        if ("true".equalsIgnoreCase(runningInDocker)) {
+            // Το backend τρέχει ΜΕΣΑ σε container => πρέπει να κάνεις resolve το path από ENV
+            String hostShared = System.getenv("SHARED_VOLUME"); // π.χ. E:\ThesisApp\shared
+            return Paths.get(hostShared).toAbsolutePath();
+        } else {
+            return Paths.get("shared").toAbsolutePath(); // όταν τρέχεις από IntelliJ
         }
-
-        // Διαφορετικά, είσαι σε τοπικό περιβάλλον
-        return Path.of(System.getProperty("java.io.tmpdir"));
     }
 
     public static Map<String, Object> loadUserParamsFromMinio(MinioService minioService, String key, String bucket) {

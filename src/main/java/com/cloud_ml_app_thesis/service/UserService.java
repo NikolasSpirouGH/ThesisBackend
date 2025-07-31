@@ -98,6 +98,7 @@ public class UserService {
 
     @Transactional
     public void resetPasswordRequest(String userEmail) {
+        log.info("I am into reset");
         log.debug("🔐 Password reset requested for email: {}", userEmail);
 
         User user = userRepository.findByEmail(userEmail)

@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
@@ -189,21 +190,44 @@ public class CustomTrainingService {
                 throw new IllegalStateException("This algorithm is already trained on the same dataset");
             }
 
+            log.info("Prepare training data...");
             // 5. Prepare /data & /model directories
-            Path basePath = FileUtil.getSharedPathRoot();
+            Path basePath = Paths.get(System.getenv("SHARED_VOLUME")).toAbsolutePath();
+            log.info("📂 Base shared path: {}", basePath);
+
             dataDir = Files.createTempDirectory(basePath, "training-ds-");
             outputDir = Files.createTempDirectory(basePath, "training-out-");
-
+            log.info("Dataset path: {}", dataDir);
+            log.info("Output path: {}", outputDir);
+            Files.createDirectories(dataDir);   // Δημιουργεί τον φάκελο με force αν δεν υπάρχει
+            Files.createDirectories(outputDir);
+            log.info("📌 Real host data path: {}", dataDir.toAbsolutePath());
+            log.info("📌 Does it exist? {}", Files.exists(dataDir.resolve("dataset.csv")));
             FileUtil.writeParamsJson(finalParams, datasetConfig, dataDir);
 
             Path datasetInside = dataDir.resolve("dataset.csv");
-            Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
 
+            Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
+            if (!Files.exists(datasetInside)) {
+                throw new IllegalStateException("❌ dataset.csv does not exist before starting container!");
+            }
+            Thread.sleep(1000);
+            log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
+            log.info("✅ Copied dataset.csv");
             log.info("📁 Training paths: /data={}, /model={}", dataDir, outputDir);
 
+            File datasetInsideFile = dataDir.resolve("dataset.csv").toFile();
+            log.info("🔍 dataset.csv exists: {}", datasetInsideFile.exists());
+            log.info("🔍 dataset.csv absolute path: {}", datasetInsideFile.getAbsolutePath());
+            log.info("🔍 dataset.csv length: {}", datasetInsideFile.length());
+
+            log.info("📂 Validating that dataset is visible to Docker (host path): {}", dataDir);
+            log.info("🧪 Host file exists: {}", Files.exists(dataDir.resolve("dataset.csv")));
             // 6. Run training container
             dockerCommandRunner.runTrainingContainer(dockerImageTag, dataDir, outputDir);
 
+            log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
+            log.info("✅ Copied dataset.csv");
             // 7. Read output files
             File modelFile = Files.walk(outputDir)
                     .filter(Files::isRegularFile)

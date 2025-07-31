@@ -120,6 +120,7 @@ public class AuthService {
     @Transactional
     public GenericResponse<?> login(LoginRequest request) {
         log.info("Attempting to login user: {}", request.getUsername());
+        log.info("Good morning Mr : {}", request.getUsername());
         try {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(

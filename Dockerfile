@@ -1,17 +1,16 @@
-FROM eclipse-temurin:21-jdk as builder
+FROM eclipse-temurin:21-jdk
 
 WORKDIR /app
-COPY .mvn/ .mvn
+
+COPY .mvn .mvn
 COPY mvnw .
 COPY pom.xml .
+
+# Προεγκατάσταση εξαρτήσεων για πιο γρήγορο startup
 RUN ./mvnw dependency:go-offline
 
-COPY src ./src
-RUN ./mvnw clean package -DskipTests
+# Εκθέτουμε τα ports
+EXPOSE 8080 5005
 
-# ----------- runtime stage -----------
-FROM eclipse-temurin:21-jdk
-WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# CMD για dev: spring-boot:run
+CMD ["./mvnw", "spring-boot:run"]

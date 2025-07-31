@@ -22,14 +22,18 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -60,7 +64,8 @@ public class CustomPredictionService {
                 .orElseThrow(() -> new IllegalStateException("Missing task record"));
 
         ModelExecution execution = null;
-        String resultUrl = null;
+        Path dataDir = null;
+        Path outputDir = null;
 
         try {
             task.setStatus(TaskStatusEnum.RUNNING);
@@ -70,7 +75,8 @@ public class CustomPredictionService {
             Model model = modelRepository.findById(modelId)
                     .orElseThrow(() -> new EntityNotFoundException("Model with ID " + modelId + " not found"));
 
-            if(model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE) && !user.getUsername().equals(model.getTraining().getUser().getUsername())) {
+            if (model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)
+                    && !user.getUsername().equals(model.getTraining().getUser().getUsername())) {
                 throw new AuthorizationDeniedException("You are not allowed to run this model");
             }
 
@@ -84,42 +90,43 @@ public class CustomPredictionService {
             }
 
             String inputBucket = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
-
-            // ⬇️ 2. Download input dataset from MinIO to temp
-            Path predictionDataset = minioService.downloadObjectToTempFile(inputBucket, datasetKey);
-
-            // 3. Κατέβασμα μοντέλου από MinIO
             String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
+
+            // 2. Δημιουργία shared paths
+            Path basePath = Paths.get(System.getenv("SHARED_VOLUME")).toAbsolutePath();
+            dataDir = Files.createTempDirectory(basePath, "predict-ds-");
+            outputDir = Files.createTempDirectory(basePath, "predict-out-");
+
+            Files.createDirectories(dataDir);
+            Files.createDirectories(outputDir);
+
+            // 3. Κατέβασμα dataset και αντιγραφή σε /data
+            Path datasetPath = minioService.downloadObjectToTempFile(inputBucket, datasetKey);
+            Path datasetInside = dataDir.resolve("dataset.csv");
+            Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
+            log.info("📥 Prediction dataset copied to /data: {}", datasetInside);
+
+            // 4. Κατέβασμα μοντέλου και αντιγραφή σε /model
             String modelKey = minioService.extractMinioKey(model.getModelUrl());
-            Path inputData = minioService.downloadObjectToTempFile(modelBucket, modelKey);
+            Path modelPath = minioService.downloadObjectToTempFile(modelBucket, modelKey);
+            Path modelInside = outputDir.resolve("model.pkl");
+            Files.copy(modelPath, modelInside, StandardCopyOption.REPLACE_EXISTING);
+            log.info("📥 Trained model copied to /model: {}", modelInside);
 
-            log.info("🧠 model.getModelUrl() = {}", model.getModelUrl());
-
-            // 4. Δημιουργία output dir
-            Path outputDir = Files.createTempDirectory("predict-out-");
-
+            // 5. Εκτέλεση docker container
             CustomAlgorithm algorithm = model.getTraining().getCustomAlgorithmConfiguration().getAlgorithm();
-
             CustomAlgorithmImage activeImage = algorithm.getImages().stream()
                     .filter(CustomAlgorithmImage::isActive)
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException("No active image found"));
 
-            // 5. Εκτέλεση docker container
-            dockerContainerRunner.runPredictionContainer(activeImage.getName(), predictionDataset, inputData, outputDir);
+            dockerContainerRunner.runPredictionContainer(activeImage.getName(), dataDir, outputDir);
 
             // 6. Βρες output αρχείο
-            File[] predictionFiles = outputDir.toFile().listFiles();
-
-            if (predictionFiles == null || predictionFiles.length == 0) {
-                task.setStatus(TaskStatusEnum.FAILED);
-                task.setErrorMessage("No prediction files found");
-                task.setFinishedAt(ZonedDateTime.now());
-                throw new FileProcessingException("No prediction output found", null);
-            }
-
-            File predictedFile = Arrays.stream(predictionFiles)
-                    .filter(f -> f.getName().endsWith(".csv") || f.getName().endsWith(".arff"))
+            File predictedFile = Files.walk(outputDir)
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.toString().endsWith(".csv") || p.toString().endsWith(".arff"))
+                    .map(Path::toFile)
                     .findFirst()
                     .orElseThrow(() -> new FileProcessingException("No valid .csv or .arff output found", null));
 
@@ -130,11 +137,10 @@ public class CustomPredictionService {
             execution.setExecutedAt(ZonedDateTime.now());
             execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS)
                     .orElseThrow(() -> new EntityNotFoundException("Execution status not found")));
-
             modelExecutionRepository.save(execution);
 
+            // 8. Upload σε MinIO
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
-            // 8. Upload output σε MinIO
             String predKey = user.getUsername() + "_" + timestamp + "_" + predictedFile.getName();
             String predBucket = bucketResolver.resolve(BucketTypeEnum.PREDICTION_RESULTS);
 
@@ -142,17 +148,15 @@ public class CustomPredictionService {
                 minioService.uploadToMinio(in, predBucket, predKey, predictedFile.length(), "text/csv");
             }
 
-            resultUrl = modelService.generateMinioUrl(predBucket, predKey);
-
+            String resultUrl = modelService.generateMinioUrl(predBucket, predKey);
             execution.setPredictionResult(resultUrl);
             execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FINISHED)
                     .orElseThrow(() -> new EntityNotFoundException("Execution status not found")));
             modelExecutionRepository.save(execution);
 
-            // 9. Ενημέρωση task
-            taskStatusService.completeTask(taskId);
-            log.info("Execution id inside model execution service: {}", execution.getId());
+            // 9. Ολοκλήρωση task
             task.setExecutionId(execution.getId());
+            taskStatusService.completeTask(taskId);
             taskStatusRepository.save(task);
 
             log.info("✅ Prediction complete [taskId={}]. Output at: {}", taskId, resultUrl);
@@ -161,12 +165,18 @@ public class CustomPredictionService {
             log.error("❌ Prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);
             taskStatusService.taskFailed(taskId, e.getMessage());
             if (execution != null) {
-                execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED)
-                        .orElse(null));
+                execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED).orElse(null));
                 modelExecutionRepository.save(execution);
             }
             taskStatusRepository.save(task);
             throw new RuntimeException("Prediction failed: " + e.getMessage(), e);
+        } finally {
+            try {
+                if (dataDir != null) FileUtils.deleteDirectory(dataDir.toFile());
+                if (outputDir != null) FileUtils.deleteDirectory(outputDir.toFile());
+            } catch (IOException cleanupEx) {
+                log.warn("⚠️ Failed to clean up temp directories: {}", cleanupEx.getMessage());
+            }
         }
     }
 
