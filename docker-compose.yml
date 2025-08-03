@@ -1,9 +1,9 @@
 version: "3.9"
 
 services:
-
   backend:
     environment:
+      - SPRING_PROFILES_ACTIVE=docker
       - RUNNING_IN_DOCKER=true
       - SHARED_VOLUME=${SHARED_VOLUME}
       - MAIL_HOST=${MAIL_HOST}
@@ -50,7 +50,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "5433:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
 

@@ -6,7 +6,7 @@ import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.service.CustomTrainingService;
 import com.cloud_ml_app_thesis.service.CustomPredictionService;
 import com.cloud_ml_app_thesis.service.ModelExecutionService;
-import com.cloud_ml_app_thesis.service.PredefinedTrainService;
+import com.cloud_ml_app_thesis.service.TrainService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +22,7 @@ public class AsyncManager {
 
     private final CustomTrainingService customTrainingService;
     private final CustomPredictionService customPredictionService;
-    private final PredefinedTrainService predefinedTrainService;
+    private final TrainService trainService;
     private final ModelExecutionService modelExecutionService;
 
     @Async
@@ -44,7 +44,7 @@ public class AsyncManager {
     public CompletableFuture<Void> trainAsync(String taskId, User user, PredefinedTrainMetadata metadata) {
         log.info("🔍 [ASYNC] Training started [taskId={}]", taskId);
         try {
-            predefinedTrainService.train(taskId, user, metadata);
+            trainService.train(taskId, user, metadata);
             return CompletableFuture.completedFuture(null);
 
         } catch (Exception e) {

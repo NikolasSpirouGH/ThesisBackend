@@ -77,6 +77,12 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(UserInitiatedStopException.class)
+    public ResponseEntity<GenericResponse<?>> handleUserInitiatedStop(UserInitiatedStopException ex) {
+        GenericResponse<?> errorResponse = new GenericResponse<>(null, "410", "Training was stopped by the user", new Metadata());
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
     @ExceptionHandler(MinioFileUploadException.class)
     public ResponseEntity<GenericResponse<?>> handleMinioFileUploadException(MinioFileUploadException ex) {
         logger.error("Minio file upload exception: {}", ex.getMessage(), ex);

@@ -100,7 +100,6 @@ public class AlgorithmController {
         return ResponseEntity.ok(algorithmService.updateAlgorithm(id, request));
     }
 
-
     //TODO check if this endpoint needs to exist && DELETE THE PARAMS because it is POST
     @PostMapping("/choose-algorithm")
     public ResponseEntity<String> chooseAlgorithm(@RequestParam Integer id, @RequestParam(required= false) String options) {

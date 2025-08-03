@@ -6,6 +6,7 @@ import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.enumeration.accessibility.DatasetAccessibilityEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
+import com.cloud_ml_app_thesis.exception.UserInitiatedStopException;
 import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,8 @@ import org.modelmapper.ModelMapper;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.ZonedDateTime;
 
@@ -97,6 +100,38 @@ public class TaskStatusService {
             taskStatusRepository.save(task);
             log.info("Task failed [{}]", taskId);
         });
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void stopTask(String taskId, String username) throws InterruptedException {
+        AsyncTaskStatus task = taskStatusRepository.findById(taskId)
+                .orElseThrow(() -> new EntityNotFoundException("Task not found"));
+        if (!task.getUsername().equals(username)) {
+            throw new AuthorizationDeniedException("You are not allowed to stop this task.");
+        }
+        task.setStopRequested(true);
+        taskStatusRepository.save(task);
+        Thread.sleep(3000);
+    }
+
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public boolean stopRequested(String taskId) {
+        Boolean result = taskStatusRepository.fetchFresh(taskId);
+        log.info("🧪 stopRequested({}) = {}", taskId, result);
+        return Boolean.TRUE.equals(result);
+    }
+
+    @Transactional
+    public void taskStopped(String taskId) {
+        AsyncTaskStatus task = taskStatusRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("No task with id: " + taskId));
+
+        task.setStatus(TaskStatusEnum.STOPPED);
+        task.setErrorMessage("Task stopped by user");
+        task.setFinishedAt(ZonedDateTime.now());
+
+        log.info("🧪 Saving task status STOPPED [{}]", task);
+        taskStatusRepository.save(task);
     }
 }
 

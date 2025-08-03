@@ -21,7 +21,6 @@ import java.time.Duration;
 import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
 
-
 @Slf4j
 @Component
 public class DockerContainerRunner {
@@ -29,8 +28,7 @@ public class DockerContainerRunner {
     private final DockerClient dockerClient;
 
     public DockerContainerRunner() {
-        String dockerHost = "unix:///var/run/docker.sock";
-
+        String dockerHost = System.getenv().getOrDefault("DOCKER_HOST", "unix:///var/run/docker.sock");
         DefaultDockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
                 .withDockerHost(dockerHost)
                 .withDockerTlsVerify(false)

@@ -41,12 +41,23 @@ public class FileUtil {
 
     public static Path getSharedPathRoot() {
         String runningInDocker = System.getenv("RUNNING_IN_DOCKER");
+
         if ("true".equalsIgnoreCase(runningInDocker)) {
-            // Το backend τρέχει ΜΕΣΑ σε container => πρέπει να κάνεις resolve το path από ENV
-            String hostShared = System.getenv("SHARED_VOLUME"); // π.χ. E:\ThesisApp\shared
+            String hostShared = System.getenv("SHARED_VOLUME");
+            if (hostShared == null || hostShared.isBlank()) {
+                throw new IllegalStateException("SHARED_VOLUME is not set in Docker container");
+            }
             return Paths.get(hostShared).toAbsolutePath();
         } else {
-            return Paths.get("shared").toAbsolutePath(); // όταν τρέχεις από IntelliJ
+            // Αν έχει οριστεί TMPDIR στο .env ή system, χρησιμοποιείται αυτό
+            String customTmp = System.getenv("TMPDIR");
+            if (customTmp != null && !customTmp.isBlank()) {
+                return Paths.get(customTmp).toAbsolutePath();
+            }
+
+            // Αλλιώς χρησιμοποιούμε το default java tmpdir
+            String systemTmp = System.getProperty("java.io.tmpdir");
+            return Paths.get(systemTmp).toAbsolutePath();
         }
     }
 

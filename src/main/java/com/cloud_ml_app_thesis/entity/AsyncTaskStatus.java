@@ -2,10 +2,7 @@ package com.cloud_ml_app_thesis.entity;
 
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -39,6 +36,8 @@ public class AsyncTaskStatus {
     private Integer modelId;
     private Integer trainingId;
     private Integer executionId;
+    @Column(nullable = false)
+    private boolean stopRequested;
 
 
 }

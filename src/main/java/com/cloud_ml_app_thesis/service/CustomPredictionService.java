@@ -18,6 +18,7 @@ import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
 import com.cloud_ml_app_thesis.util.DockerContainerRunner;
+import com.cloud_ml_app_thesis.util.FileUtil;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -93,7 +94,8 @@ public class CustomPredictionService {
             String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
 
             // 2. Δημιουργία shared paths
-            Path basePath = Paths.get(System.getenv("SHARED_VOLUME")).toAbsolutePath();
+            //Path basePath = Paths.get(System.getenv("SHARED_VOLUME")).toAbsolutePath();
+            Path basePath = FileUtil.getSharedPathRoot();
             dataDir = Files.createTempDirectory(basePath, "predict-ds-");
             outputDir = Files.createTempDirectory(basePath, "predict-out-");
 
@@ -102,7 +104,7 @@ public class CustomPredictionService {
 
             // 3. Κατέβασμα dataset και αντιγραφή σε /data
             Path datasetPath = minioService.downloadObjectToTempFile(inputBucket, datasetKey);
-            Path datasetInside = dataDir.resolve("dataset.csv");
+            Path datasetInside = dataDir.resolve("predict.csv");
             Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
             log.info("📥 Prediction dataset copied to /data: {}", datasetInside);
 

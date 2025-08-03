@@ -76,4 +76,47 @@ select * from users;
 
 select * from custom_algorithms;
 
+select * from custom_algorithm_configurations;
+
+select * from dataset_configurations;
+
 select * from trainings;
+
+select * from custom_algorithms;
+
+INSERT INTO trainings (
+    started_date,
+    finished_date,
+    status_id,
+    algorithm_configuration_id,
+    custom_algorithm_configuration_id,
+    user_id,
+    dataset_id,
+    results
+)
+VALUES
+    (NOW(), NOW() + INTERVAL '1 minute', 1, 9, NULL, 1, 1, 'Test result 1'),
+    (NOW(), NOW() + INTERVAL '2 minutes', 1, 1, NULL, 1, 1, 'Test result 2'),
+    (NOW(), NOW() + INTERVAL '3 minutes', 1, 1, NULL, 1, 1, 'Test result 3'),
+    (NOW(), NOW() + INTERVAL '4 minutes', 1, 1, NULL, 1, 1, 'Test result 4'),
+    (NOW(), NOW() + INTERVAL '5 minutes', 1, 1, NULL, 1, 1, 'Test result 5');
+
+ALTER TABLE async_task_status
+    ADD COLUMN stop_requested BOOLEAN DEFAULT FALSE NOT NULL;
+
+select * from async_task_status;
+
+select * from trainings;
+
+ALTER TABLE async_task_status
+    DROP CONSTRAINT async_task_status_status_check;
+
+ALTER TABLE async_task_status
+    ADD CONSTRAINT async_task_status_status_check
+        CHECK (
+            (status)::text = ANY (
+                ARRAY['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'STOPPED']
+                )
+            );
+
+

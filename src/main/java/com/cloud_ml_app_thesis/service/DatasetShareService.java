@@ -239,18 +239,5 @@ public class DatasetShareService {
         datasetShareHistoryRepository.save(new DatasetShareHistory(null, dataset, sharedWithUser, actionUser, ZonedDateTime.now(ZoneId.of("Europe/Athens")), declineAction, comments));
 
     }
-    private User resolveTargetUser(User currentUser, String targetUsername) {
-        if (targetUsername == null || targetUsername.equals(currentUser.getUsername())) {
-            return currentUser;
-        }
-
-        //TODO why it throws exception here? Can someone just be authenticated having the role USER or another role?
-        if (!hasAnyRole(currentUser, SecurityUtils.authority(UserRoleEnum.ADMIN), SecurityUtils.authority(UserRoleEnum.DATASET_MANAGER))) {
-            throw new AccessDeniedException("Only ADMIN or DATASET_MANAGER can copy for another user.");
-        }
-
-        return userRepository.findByUsername(targetUsername)
-                .orElseThrow(() -> new EntityNotFoundException("Target user not found"));
-    }
 }
 

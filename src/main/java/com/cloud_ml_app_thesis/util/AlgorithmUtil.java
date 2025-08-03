@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.util;
 
+import com.cloud_ml_app_thesis.entity.Training;
 import com.cloud_ml_app_thesis.service.AlgorithmService;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
@@ -84,6 +85,15 @@ public class AlgorithmUtil {
         return raw;
     }
 
+    public static String resolveAlgorithmName(Training training) {
+        if (training.getCustomAlgorithmConfiguration() != null) {
+            return training.getCustomAlgorithmConfiguration().getAlgorithm().getName();
+        } else if (training.getAlgorithmConfiguration() != null) {
+            log.info("Algorithm name: {}", training.getAlgorithmConfiguration().getAlgorithm().getName());
+            return training.getAlgorithmConfiguration().getAlgorithm().getName();
+        }
+        return "Unknown";
+    }
 
     }
 

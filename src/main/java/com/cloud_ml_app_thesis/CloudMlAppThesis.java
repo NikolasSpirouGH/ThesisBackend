@@ -11,5 +11,4 @@ public class CloudMlAppThesis {
 	public static void main(String[] args) {
 		SpringApplication.run(CloudMlAppThesis.class, args);
 	}
-
 }

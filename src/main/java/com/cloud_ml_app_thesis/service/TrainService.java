@@ -1,11 +1,9 @@
 package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
-import com.cloud_ml_app_thesis.dto.train.ClusterEvaluationResult;
-import com.cloud_ml_app_thesis.dto.train.EvaluationResult;
-import com.cloud_ml_app_thesis.dto.train.PredefinedTrainMetadata;
-import com.cloud_ml_app_thesis.dto.train.RegressionEvaluationResult;
+import com.cloud_ml_app_thesis.dto.train.*;
 import com.cloud_ml_app_thesis.entity.*;
+import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
 import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
@@ -13,12 +11,12 @@ import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
+import com.cloud_ml_app_thesis.exception.UserInitiatedStopException;
 import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.repository.DatasetConfigurationRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
 import com.cloud_ml_app_thesis.util.AlgorithmUtil;
-import com.cloud_ml_app_thesis.util.TrainingHelper;
 import com.cloud_ml_app_thesis.util.FileUtil;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
@@ -28,23 +26,26 @@ import org.springframework.stereotype.Service;
 import weka.classifiers.Classifier;
 import weka.clusterers.Clusterer;
 import weka.core.Instances;
-import weka.core.OptionHandler;
 import weka.core.Utils;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class PredefinedTrainService {
+public class TrainService {
 
     private final TrainingRepository trainingRepository;
     private final AlgorithmConfigurationRepository algorithmConfigurationRepository;
@@ -71,7 +72,8 @@ public class PredefinedTrainService {
         taskStatusRepository.save(task);
 
         Training training = trainingRepository.findById(metadata.trainingId())
-                .orElseThrow(() -> new EntityNotFoundException("Training not found"));;
+                .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+        ;
 
         try {
             AlgorithmConfiguration config = algorithmConfigurationRepository.findById(metadata.algorithmConfigurationId())
@@ -106,13 +108,22 @@ public class PredefinedTrainService {
             AlgorithmType algorithmType;
             log.info("➡️ Class index set to: " + data.classIndex());
             log.info("➡️ Class attribute name: " + data.classAttribute().name());
+            log.info("⏳ Sleeping for 20 seconds before starting training (for manual stop testing)");
+            Thread.sleep(20000);
+            if (taskStatusService.stopRequested(taskId)) {
+                throw new UserInitiatedStopException("User requested stop for task " + taskId);
+            }
             if (isClassifier && AlgorithmUtil.isClassification(data)) {
                 log.info("📊 Classification detected");
 
                 Classifier cls = AlgorithmUtil.getClassifierInstance(algorithmClassName);
-
                 String[] optionsArray = Utils.splitOptions(fixedRawOptions);                //TODO exception ??
                 AlgorithmUtil.setClassifierOptions(cls, optionsArray);
+                Thread.sleep(5000);
+                log.info("🧪 Checking stop status after delay...");
+                if (taskStatusService.stopRequested(taskId)) {
+                    throw new UserInitiatedStopException("User requested stop for task " + taskId);
+                }
                 cls.buildClassifier(trainData);
                 evaluationResult = modelService.evaluateClassifier(cls, trainData, testData);
                 results = evaluationResult.getSummary();
@@ -121,11 +132,7 @@ public class PredefinedTrainService {
 
             } else if (isClassifier && AlgorithmUtil.isRegression(data)) {
                 log.info("📈 Regression detected");
-
-                Instances train = new Instances(data, 0, trainSize);
-
                 Classifier cls = AlgorithmUtil.getClassifierInstance(algorithmClassName);
-
                 String[] optionsArray = Utils.splitOptions(fixedRawOptions);                //TODO exception ??
                 AlgorithmUtil.setClassifierOptions(cls, optionsArray);
                 cls.buildClassifier(trainData);
@@ -136,9 +143,7 @@ public class PredefinedTrainService {
 
             } else if (isClusterer) {
                 log.info("🔀 Clustering detected");
-
                 if (data.classIndex() >= 0) data.setClassIndex(-1); // Δεν πρέπει να έχει class attribute
-
                 Clusterer cls = AlgorithmUtil.getClustererInstance(algorithmClassName);
                 String[] optionsArray = Utils.splitOptions(fixedRawOptions);
                 log.info("Options: {}", config.getOptions());
@@ -202,20 +207,82 @@ public class PredefinedTrainService {
 
             log.info("✅ Training complete [taskId={}] with modelId={}", taskId, model.getId());
 
-        } catch (Exception e) {
-            log.error("❌ Training failed [taskId={}]: {}", taskId, e.getMessage(), e);
-            taskStatusService.taskFailed(taskId, e.getMessage());
+        }catch(UserInitiatedStopException e) {
+            log.warn("🛑 Training manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
+            taskStatusService.taskStopped(taskId);
+            task.setTrainingId(training.getId());
 
-            if (training != null) {
                 training.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
                         .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found")));
                 training.setResults(e.getMessage());
                 training.setFinishedDate(ZonedDateTime.now());
                 trainingRepository.save(training);
-            }
+        } catch (Exception e) {
+            log.error("❌ Training failed [taskId={}]: {}", taskId, e.getMessage(), e);
+            taskStatusService.taskFailed(taskId, e.getMessage());
+            task.setTrainingId(training.getId());
+                training.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
+                        .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found")));
+                training.setResults(e.getMessage());
+                training.setFinishedDate(ZonedDateTime.now());
+                trainingRepository.save(training);
 
             throw new RuntimeException("Predefined training failed", e);
         }
+    }
+
+    public List<TrainingDTO> findTrainingsForUser(User user, LocalDate startDate, Integer algorithmId, ModelTypeEnum type) {
+        List<Training> trainings;
+
+        ZonedDateTime from = startDate != null
+                ? startDate.atStartOfDay(ZoneId.of("Europe/Athens"))
+                : null;
+
+        if (from == null && algorithmId == null && type == null) {
+            trainings = trainingRepository.findAllByUser(user);
+
+        } else if (from != null && algorithmId == null && type == null) {
+            trainings = trainingRepository.findAllFromDate(user, from);
+
+        } else if (from == null && algorithmId != null && type != null) {
+            trainings = (type == ModelTypeEnum.CUSTOM)
+                    ? trainingRepository.findByCustomAlgorithm(user, algorithmId)
+                    : trainingRepository.findByPredefinedAlgorithm(user, algorithmId);
+
+        } else if (from != null && algorithmId != null && type != null) {
+            trainings = (type == ModelTypeEnum.CUSTOM)
+                    ? trainingRepository.findFromDateAndCustomAlgorithm(user, from, algorithmId)
+                    : trainingRepository.findFromDateAndPredefinedAlgorithm(user, from, algorithmId);
+
+        }
+        else if (from == null && algorithmId == null && type != null) {
+            trainings = (type == ModelTypeEnum.CUSTOM)
+                    ? trainingRepository.findAllCustom(user)
+                    : trainingRepository.findAllPredefined(user);
+        }
+        else if (from != null && algorithmId == null && type != null) {
+            trainings = (type == ModelTypeEnum.CUSTOM)
+                    ? trainingRepository.findAllFromDateAndCustom(user, from)
+                    : trainingRepository.findAllFromDateAndPredefined(user, from);
+        }
+        else {
+            throw new IllegalArgumentException("If algorithmId is provided, algorithmType must also be specified.");
+        }
+
+        return trainings.stream()
+                .map(training -> new TrainingDTO(
+                        training.getId(),
+                        AlgorithmUtil.resolveAlgorithmName(training),
+                        training.getModel() != null ? training.getModel().getModelType().getName().name() : null,
+                        training.getStatus().getName(),
+                        training.getStartedDate(),
+                        training.getFinishedDate(),
+                        Optional.ofNullable(training.getDatasetConfiguration())
+                                .map(DatasetConfiguration::getDataset)
+                                .map(Dataset::getFileName)
+                                .orElse("Unknown")
+                ))
+                .toList();
     }
 
 }

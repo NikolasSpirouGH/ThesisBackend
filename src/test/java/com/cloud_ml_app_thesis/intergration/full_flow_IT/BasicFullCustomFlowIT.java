@@ -15,7 +15,7 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.fail;
 
-@ActiveProfiles("test")
+@ActiveProfiles("local")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestPropertySource(properties = {
@@ -51,7 +51,7 @@ public class BasicFullCustomFlowIT {
                 .multiPart("accessibility", "PUBLIC")
                 .multiPart("keywords", "ml", "classification")
                 .multiPart("parametersFile", parametersFile)
-                .multiPart("dockerHubUrl", "paradoxsenpai/linearreg:1.0.0")
+                .multiPart("dockerHubUrl", "paradoxsenpai/logreg:1.0.0")
                 .when()
                 .post("/api/algorithms/createCustomAlgorithm")
                 .then()
@@ -72,15 +72,15 @@ public class BasicFullCustomFlowIT {
     @Test
     @Order(2)
     void shouldTrainCustomModel() throws IOException {
-       // Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
+        Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
 
-        File datasetFile = new ClassPathResource("datasets/custom_train_numerical.csv").getFile();
+        File datasetFile = new ClassPathResource("datasets/four_cols_nominal_train.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
                 .contentType(ContentType.MULTIPART)
                 .multiPart("datasetFile", datasetFile)
-                .multiPart("algorithmId", 14)
+                .multiPart("algorithmId", algorithmId)
                 .when()
                 .post("/api/train/custom")
                 .then()
@@ -152,7 +152,7 @@ public class BasicFullCustomFlowIT {
     void shouldPredictCustomModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
 
-        File predictionFile = new ClassPathResource("datasets/custom_prediction_numerical.csv").getFile();
+        File predictionFile = new ClassPathResource("datasets/prediction_nominal_custom.csv").getFile();
 
         Response predictionResponse = given()
                 .header("Authorization", "Bearer " + jwtToken)

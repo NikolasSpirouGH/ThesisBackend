@@ -4,5 +4,6 @@ public enum TaskStatusEnum {
     PENDING,
     RUNNING,
     COMPLETED,
-    FAILED
+    FAILED,
+    STOPPED
 }

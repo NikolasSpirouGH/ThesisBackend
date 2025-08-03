@@ -62,17 +62,6 @@ public class DatasetController {
         return ResponseEntity.ok().body(datasetResponse);
     }
 
-//    @PostMapping("/create")
-//    @PreAuthorize("hasAnyRole('ADMIN', 'DATASET_MANAGER')")
-//    public ResponseEntity<GenericResponse<?>> createDataset(@AuthenticationPrincipal UserDetails userDetails, @ModelAttribute DatasetCreateRequest request) {
-//
-//        GenericResponse<?> response = datasetService.uploadDataset(userDetails, request);
-//        if (response.getErrorCode() != null && !response.getErrorCode().isBlank()) {
-//            return ResponseEntity.internalServerError().body(response);
-//        }
-//        return ResponseEntity.ok().body(response);
-//    }
-
     @PatchMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<?>> updateDataset(@AuthenticationPrincipal UserDetails userDetails, @ModelAttribute DatasetUpdateRequest request) {
@@ -162,15 +151,5 @@ public class DatasetController {
         }
         return ResponseEntity.ok().body(response);
     }
-//    @GetMapping("/urls")
-//    public ResponseEntity<ApiResponse<?>> getDatasetsUrls(@RequestParam String email){
-//        ApiResponse<?> response = datasetService.getDatasetUrls(email);
-//        if (response.getErrorCode() != null && !response.getErrorCode().isBlank()) {
-//            return ResponseEntity.internalServerError().body(response);
-//        }
-//        return ResponseEntity.ok().body(response);
-//    }
-
-
 
 }

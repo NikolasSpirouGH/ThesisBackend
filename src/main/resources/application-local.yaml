@@ -2,11 +2,16 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: optional:file:.local.env[.properties]
   datasource:
     url: jdbc:postgresql://localhost:5433/app-db
     username: postgres
     password: 1996
     driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: 30000
+      initialization-fail-timeout: -1
 
   jpa:
     hibernate:

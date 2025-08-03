@@ -1,46 +1,31 @@
-version: "3.8"
-
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    environment:
-      - JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS}
-    ports:
-      - "8080:8080"
-      - "5005:5005"
-    volumes:
-      - .:/app
-      - ~/.m2:/root/.m2
-      - /var/run/docker.sock:/var/run/docker.sock  # 👈 mount docker socket του host
-      - /tmp:/tmp # 👈 ΝΑ ΠΡΟΣΤΕΘΕΙ ΑΥΤΟ
-      - ./shared:/shared
-    env_file:
-      - .env
-    depends_on:
-      - db
-      - minio
-      - mailhog
 
   db:
-    image: postgres:16
+    image: postgres:15
     restart: always
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      interval: 5s
+      retries: 5
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   minio:
     image: quay.io/minio/minio
-    command: server /data --console-address ":9001"
+    command: server /data --console-address ":9001"  # ✅ ΠΡΕΠΕΙ να υπάρχει
     ports:
       - "9000:9000"
       - "9001:9001"
+    env_file:
+      - .env
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
@@ -57,7 +42,5 @@ services:
 
 volumes:
   pgdata:
-    driver: local
   minio_data:
-    driver: local
   mailhog_data:

@@ -18,7 +18,8 @@ public class AsyncTaskStatusDTO {
     private String taskId;
     private TaskTypeEnum taskType;
     private TaskStatusEnum status;
-    private String resultUrl;
+    private String errorMessage;
+    private String outputMessage;
     private ZonedDateTime startedAt;
     private ZonedDateTime finishedAt;
     private String username;

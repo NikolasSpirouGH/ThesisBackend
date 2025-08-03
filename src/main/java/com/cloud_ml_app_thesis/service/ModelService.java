@@ -12,6 +12,7 @@ import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
 import com.cloud_ml_app_thesis.enumeration.status.ModelStatusEnum;
+import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.repository.accessibility.ModelAccessibilityRepository;
@@ -345,7 +346,22 @@ public class ModelService {
         }
     }
 
+    public ByteArrayResource downloadModel(Integer trainingId, User user) {
+        Training training = trainingRepository.findById(trainingId).orElseThrow(() -> new EntityNotFoundException("Training not found"));
+        if (!training.getUser().getUsername().equals(user.getUsername())) {
+            throw new AuthorizationDeniedException("Access denied");
+        }
 
+        if (!training.getStatus().getName().equals(TrainingStatusEnum.COMPLETED)) {
+            throw new IllegalStateException("Training not completed");
+        }
+
+        String modelUrl = training.getModel().getModelUrl();
+        String bucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
+        String key = minioService.extractMinioKey(modelUrl);
+        byte[] data = minioService.downloadObjectAsBytes(bucket, key);
+        return new ByteArrayResource(data);
+    }
 
 
 }

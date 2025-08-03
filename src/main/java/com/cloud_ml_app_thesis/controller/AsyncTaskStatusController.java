@@ -7,6 +7,7 @@ import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
 import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.service.TaskStatusService;
+import com.cloud_ml_app_thesis.service.TrainService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -17,10 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.Response;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +32,7 @@ public class AsyncTaskStatusController {
 
     private final TaskStatusService taskStatusService;
     private final TaskStatusRepository taskStatusRepository;
+    private final TrainService trainService;
 
     @Operation(summary = "Tracking training")
     @ApiResponses(value = {
@@ -97,4 +96,12 @@ public class AsyncTaskStatusController {
         return ResponseEntity.ok(response);
     }
 
+
+    @Operation(summary = "Stop task",
+            description = "User-initiated stop request for a running task")
+    @PutMapping("/stop/{taskId}")
+    public ResponseEntity<GenericResponse<String>> stopTask(@PathVariable String taskId, @AuthenticationPrincipal AccountDetails accountDetails) throws InterruptedException {
+        taskStatusService.stopTask(taskId, accountDetails.getUser().getUsername());
+        return ResponseEntity.ok(GenericResponse.success("Training stop requested", taskId));
+    }
 }

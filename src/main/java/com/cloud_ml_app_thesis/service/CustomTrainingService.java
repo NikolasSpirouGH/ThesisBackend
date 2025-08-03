@@ -1,6 +1,7 @@
 package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
+import com.cloud_ml_app_thesis.config.PathResolver;
 import com.cloud_ml_app_thesis.dto.train.CustomTrainMetadata;
 import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.ModelType;
@@ -27,7 +28,9 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -63,12 +66,16 @@ public class CustomTrainingService {
     private final CustomAlgorithmConfigurationRepository customAlgorithmConfigurationRepository;
     private final AlgorithmImageRepository algorithmImageRepository;
     private final TaskStatusService taskStatusService;
+    private final PathResolver pathResolver;
     ObjectMapper mapper = new ObjectMapper();
 
 
     @Transactional
     public void trainCustom(String taskId, User user, CustomTrainMetadata metadata) {
         log.info("🧠 Starting training [taskId={}] for user={}", taskId, user.getUsername());
+
+        System.out.println("🧪 SHARED_VOLUME from env: " + pathResolver.getSharedPathRoot());
+        System.out.println("🧪 TMPDIR from env: " + pathResolver.getTmpDir());
 
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Async task tracking not found"));
@@ -191,8 +198,9 @@ public class CustomTrainingService {
             }
 
             log.info("Prepare training data...");
-            // 5. Prepare /data & /model directories
-            Path basePath = Paths.get(System.getenv("SHARED_VOLUME")).toAbsolutePath();
+             //5. Prepare /data & /model directories
+            //Path basePath = Paths.get(System.getenv("SHARED_VOLUME")).toAbsolutePath();
+            Path basePath = pathResolver.getSharedPathRoot();
             log.info("📂 Base shared path: {}", basePath);
 
             dataDir = Files.createTempDirectory(basePath, "training-ds-");
@@ -317,6 +325,8 @@ public class CustomTrainingService {
             }
         }
     }
+
+
 }
 
 

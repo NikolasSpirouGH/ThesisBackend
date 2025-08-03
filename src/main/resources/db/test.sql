@@ -1,1 +1,0 @@
-select * from algorithm_parameters;

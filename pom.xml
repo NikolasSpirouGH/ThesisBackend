@@ -170,6 +170,8 @@
 
     <build>
         <plugins>
+
+            <!-- Spring Boot -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -185,6 +187,21 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- Maven Surefire for integration tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0</version>
+                <configuration>
+                    <environmentVariables>
+                        <SHARED_VOLUME>E:/ThesisApp/shared</SHARED_VOLUME>
+                        <DOCKER_HOST>tcp://localhost:2375</DOCKER_HOST>
+                    </environmentVariables>
+                    <argLine>-Djava.io.tmpdir=E:/ThesisApp/tmp</argLine>
+                </configuration>
+            </plugin>
+
         </plugins>
     </build>
 

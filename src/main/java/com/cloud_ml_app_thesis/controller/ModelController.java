@@ -160,50 +160,24 @@ public class ModelController {
         return ResponseEntity.ok(new GenericResponse<>(modelId, null, "✅ Model finalized successfully", null));
     }
 
-    @GetMapping("/status/models-by-status")
-    public ResponseEntity<GenericResponse<?>> getModelsByStatus(@PathVariable int statusId){
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
+    @Operation(summary = "Download trained model by trainingId")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Model downloaded successfully"),
+            @ApiResponse(responseCode = "404", description = "Training or model not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "409", description = "Training not completed")
+    })
+    @GetMapping("/training/{trainingId}/download-model")
+    public ResponseEntity<ByteArrayResource> downloadModel(
+            @PathVariable Integer trainingId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
 
-    }
-    @GetMapping("/accessibility/model/{modelId}")
-    public ResponseEntity<GenericResponse<?>> getModelAccessibilityByModelId(@PathVariable int modelId){
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
-    }
+        ByteArrayResource model = modelService.downloadModel(trainingId, accountDetails.getUser());
 
-    @GetMapping("/accessibility/{accessibilityId}")
-    public ResponseEntity<GenericResponse<?>> getModelsByAccessibility(@PathVariable int accessibilityId){
-        //TODO Must check if the type is "SHARED" to find all the "shared" models that Belong, or have been shared
-        // to the user Requesting him
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + accountDetails.getUser().getUsername() + "_" + "model" + trainingId + "pkl")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentLength(model.contentLength())
+                .body(model);
     }
-
-    @GetMapping("/evaluation/model/{modelId}")
-    public ResponseEntity<GenericResponse<?>> getEvaluationByModelId(@PathVariable int modelId){
-        //TODO consider the shared problem
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
-    }
-
-    @GetMapping("/train/{trainingId}")
-    public ResponseEntity<GenericResponse<?>> getModels(@PathVariable int trainingId){
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
-    }
-    @GetMapping("/user/{userId}")
-    public ResponseEntity<GenericResponse<?>> getModelsByUser(@PathVariable String userId){
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
-    }
-    @GetMapping("/executions/model/number-of-executions/{modelId}")
-    public ResponseEntity<GenericResponse<?>> getNumberOfExecutionsByModelId(@PathVariable int modelId){
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
-    }
-    @GetMapping("/executions/model/{modelId}")
-    public ResponseEntity<GenericResponse<?>> getExecutionsByModelId(@PathVariable int modelId){
-        //TODO consider the model access if its is shared, otherwise only the admin and the model owner can see
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
-    }   
-    public ResponseEntity<GenericResponse<?>> getModels(){
-        return ResponseEntity.ok(new GenericResponse<>(null, null, null, null));
-    }
-
-
-
 }
