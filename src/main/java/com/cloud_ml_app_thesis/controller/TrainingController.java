@@ -19,6 +19,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.Response;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -150,5 +151,19 @@ public class TrainingController {
         List<TrainingDTO> trainings = trainService.findTrainingsForUser(
                 accountDetails.getUser(), fromDate, algorithmId, type);
         return ResponseEntity.ok(trainings);
+    }
+
+    @Operation(summary = "Delete train")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Trainings deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "Unauthorized"),
+            @ApiResponse(responseCode = "500", description = "Server error")
+    })
+    @DeleteMapping("delete/{id}")
+    public ResponseEntity<GenericResponse<String>> deleteTrain(@PathVariable Integer id, @AuthenticationPrincipal AccountDetails accountDetails) {
+        trainService.deleteTrain(id, accountDetails.getUser());
+        return ResponseEntity.accepted().body(GenericResponse.success(
+                "Training deleted", " :" + id
+        ));
     }
 }

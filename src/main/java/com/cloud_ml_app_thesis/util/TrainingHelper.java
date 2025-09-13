@@ -50,7 +50,6 @@ public class TrainingHelper {
     public TrainingDataInput configureTrainingDataInputByTrainCase(TrainingStartRequest request, User user) throws Exception {
         log.info("🔧 Configuring training input for user: {}", user.getUsername());
 
-        // Extract & validate input values
         MultipartFile file = request.getFile();
         boolean hasFile = ValidationUtil.multipartFileExist(file);
         boolean hasDatasetId = ValidationUtil.stringExists(request.getDatasetId());
@@ -62,8 +61,9 @@ public class TrainingHelper {
         boolean hasAlgorithmOpts = ValidationUtil.stringExists(request.getOptions());
         boolean hasTrainingId = ValidationUtil.stringExists(request.getTrainingId());
         boolean hasModelId = ValidationUtil.stringExists(request.getModelId());
+        final boolean retrainMode = hasTrainingId || hasModelId; // ✅ NEW
 
-        // Conflict checks
+        // ----- Conflicts (κρατάω τα υφιστάμενα, με 2 μικρές αλλαγές)
         if (hasTrainingId && hasModelId)
             return error("❌ You can't train based on both a training and a model.");
 
@@ -79,13 +79,11 @@ public class TrainingHelper {
         if (hasAlgorithmId && hasAlgorithmConfId)
             return error("❌ Cannot use both algorithmId and algorithmConfigurationId.");
 
-        if (hasAlgorithmConfId && hasAlgorithmOpts)
-            return error("❌ Cannot pass algorithmOptions if algorithmConfigurationId is used.");
+        // ΜΗ μπλοκάρεις "full new training" όταν είμαστε σε fresh mode.
+        if (retrainMode && hasAlgorithmConfId && hasDatasetConfId && hasTargetCol && hasBasicCols && hasAlgorithmOpts)
+            return error("❌ This looks like a full new training; for retraining omit dataset/algorithm re-definitions.");
 
-        if (hasAlgorithmConfId && hasDatasetConfId && hasTargetCol && hasBasicCols && hasAlgorithmOpts)
-            return error("❌ This looks like a full new training; do not use retrain mode. Start fresh.");
-
-        // Upload file if needed
+        // ----- Upload νέου αρχείου (αν υπάρχει)
         String datasetId;
         if (hasFile) {
             GenericResponse<Dataset> uploadResp = datasetService.uploadDataset(file, user, DatasetFunctionalTypeEnum.TRAIN);
@@ -96,122 +94,143 @@ public class TrainingHelper {
             datasetId = request.getDatasetId();
         }
 
-        // Dataset configuration logic
-        Instances datasetInstances = null;
-        DatasetConfiguration datasetConf;
-
-        Algorithm algorithm = algorithmRepository.findById(Integer.parseInt(request.getAlgorithmId()))
-                .orElseThrow(() -> new EntityNotFoundException("Algorithm not found."));
-
-        //If Classification
-        if(algorithm.getType().getName().equals(AlgorithmTypeEnum.CLASSIFICATION) || algorithm.getType().getName().equals(AlgorithmTypeEnum.REGRESSION)) {
-            if (hasDatasetId) {
-                log.info("Inside datasetId: {}", datasetId);
-                log.info("Classifier: {}", algorithm.getType().getName());
-                Dataset dataset = datasetRepository.findById(Integer.parseInt(datasetId))
-                        .orElseThrow(() -> new EntityNotFoundException("Dataset not found: id=" + datasetId));
-                datasetConf = new DatasetConfiguration();
-                datasetConf.setDataset(dataset);
-                if (hasBasicCols) datasetConf.setBasicAttributesColumns(request.getBasicCharacteristicsColumns());
-                if (hasTargetCol) datasetConf.setTargetColumn(request.getTargetClassColumn());
-                datasetConf = datasetConfigurationRepository.save(datasetConf);
-
-                if(hasFile){
-                    datasetInstances = DatasetUtil.prepareDataset(file, dataset.getFileName(), datasetConf);
-                } else{
-                    String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-                    InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
-                    datasetInstances = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-                }
-
-            } else if (hasDatasetConfId) {
-                log.info("Inside datasetConfId: {}", datasetId);
-                 datasetConf = datasetConfigurationRepository.findById(Integer.parseInt(request.getDatasetConfigurationId()))
-                        .orElseThrow(() -> new EntityNotFoundException("DatasetConfiguration not found."));
-                if (hasBasicCols) datasetConf.setBasicAttributesColumns(request.getBasicCharacteristicsColumns());
-                if (hasTargetCol) datasetConf.setTargetColumn(request.getTargetClassColumn());
-                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
-                datasetInstances = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-            } else {
-                return error("❌ No valid dataset provided.");
-            }
-        }
-        //If Clustering
-        else{
-            log.info("Clustering: {}", algorithm.getType().getName());
-            Dataset dataset = datasetRepository.findById(Integer.parseInt(datasetId))
-                    .orElseThrow(() -> new EntityNotFoundException("Dataset not found: id=" + datasetId));
-            datasetConf = new DatasetConfiguration();
-            datasetConf.setDataset(dataset);
-            if (hasTargetCol) datasetConf.setTargetColumn(request.getTargetClassColumn());
-            if (hasBasicCols) datasetConf.setBasicAttributesColumns(request.getBasicCharacteristicsColumns());
-            datasetConf = datasetConfigurationRepository.save(datasetConf);
-
-            if(hasFile){
-                datasetInstances = DatasetUtil.prepareDataset(file, dataset.getFileName(), datasetConf);
-            } else{
-                String[] minioInfoParts = DatasetUtil.resolveDatasetMinioInfo(datasetConf.getDataset());
-                InputStream datasetInputStream = minioService.loadObjectAsInputStream(minioInfoParts[0], minioInfoParts[1]);
-                datasetInstances = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(datasetConf, datasetInputStream, minioInfoParts[1]);
-            }
-            datasetConf.setUploadDate(ZonedDateTime.now());
-            log.info("✅ Dataset instances loaded: {} instances", datasetInstances.numInstances());
-        }
-
-        // Algorithm configuration logic
-        AlgorithmConfiguration algorithmConf = null;
-        String rawOptions = null;
-        if (hasAlgorithmId) {
-            algorithmConf = new AlgorithmConfiguration(algorithm);
-            algorithmConf.setUser(user);
-            if (hasAlgorithmOpts) {
-                // Ο χρήστης έστειλε κάτι (έστω και κενό string)
-                log.info("📥 User provided options: '{}'", request.getOptions());
-                rawOptions = request.getOptions();
-            } else {
-                // Ο χρήστης δεν έστειλε καθόλου πεδίο ➜ βάλε default
-                log.info("⚙️ No user options provided, applying algorithm defaults: '{}'", algorithm.getDefaultOptions());
-                rawOptions = algorithm.getDefaultOptions();
-            }
-            algorithmConf.setUser(user);
-            algorithmConf.setOptions(rawOptions);
-            algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
-        }
-        // Handle training/model reuse
-        Training training = new Training();
+        // ----- Βρες base training αν είμαστε σε retrain mode
+        Training retrainedFrom = null;
         if (hasTrainingId) {
-            training = trainingRepository.findById(Integer.parseInt(request.getTrainingId()))
+            retrainedFrom = trainingRepository.findById(Integer.parseInt(request.getTrainingId()))
                     .orElseThrow(() -> new EntityNotFoundException("Training not found."));
-            log.info("🔁 Reusing existing training [id={}]", training.getId());
+            log.info("🔁 Re-training from trainingId={}", retrainedFrom.getId());
         } else if (hasModelId) {
             Model model = modelRepository.findById(Integer.parseInt(request.getModelId()))
                     .orElseThrow(() -> new EntityNotFoundException("Model not found."));
-            training = trainingRepository.findByModel(model)
+            retrainedFrom = trainingRepository.findByModel(model)
                     .orElseThrow(() -> new EntityNotFoundException("Training not found for model."));
-            log.info("🔁 Reusing training from model [id={}]", model.getId());
+            log.info("🔁 Re-training from modelId={}, trainingId={}", model.getId(), retrainedFrom.getId());
         }
 
-        // Update reused training's config if needed
-        if ((hasTrainingId || hasModelId) && !hasAlgorithmConfId && hasAlgorithmOpts) {
-            algorithmConf = training.getAlgorithmConfiguration();
-            algorithmConf.setOptions(request.getOptions());
-            algorithmConf.setUser(user);
-            algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
-        }
+        // ----- Resolve DatasetConfiguration + Instances (με σωστό fallback)
+        Instances datasetInstances;
+        DatasetConfiguration datasetConf;
 
-        if ((hasTrainingId || hasModelId) && !hasFile && !hasDatasetId && !hasDatasetConfId) {
-            datasetConf = training.getDatasetConfiguration();
+        if (hasDatasetId) {
+            // fresh ή retrain με νέο datasetId -> φτιάξε/ενημέρωσε DatasetConfiguration
+            Dataset dataset = datasetRepository.findById(Integer.parseInt(datasetId))
+                    .orElseThrow(() -> new EntityNotFoundException("Dataset not found: id=" + datasetId));
+
+            datasetConf = new DatasetConfiguration();
+            datasetConf.setDataset(dataset);
             if (hasBasicCols) datasetConf.setBasicAttributesColumns(request.getBasicCharacteristicsColumns());
             if (hasTargetCol) datasetConf.setTargetColumn(request.getTargetClassColumn());
+            datasetConf.setUploadDate(ZonedDateTime.now()); // ✅ ευθυγράμμιση με το clustering branch
+            datasetConf = datasetConfigurationRepository.save(datasetConf);
+
+            // Φόρτωση από MinIO μέσω DatasetService (✅ όχι απευθείας MinioService)
+            datasetInstances = datasetService.loadTrainingInstances(datasetConf);
+
+        } else if (hasDatasetConfId) {
+            datasetConf = datasetConfigurationRepository.findById(Integer.parseInt(request.getDatasetConfigurationId()))
+                    .orElseThrow(() -> new EntityNotFoundException("DatasetConfiguration not found."));
+
+            // Επίτρεψε overrides ΜΟΝΟ αν δόθηκαν (αλλιώς κράτα το ίδιο)
+            if (hasBasicCols) datasetConf.setBasicAttributesColumns(request.getBasicCharacteristicsColumns());
+            if (hasTargetCol) datasetConf.setTargetColumn(request.getTargetClassColumn());
+            datasetConf = datasetConfigurationRepository.save(datasetConf);
+
+            datasetInstances = datasetService.loadTrainingInstances(datasetConf); // ✅
+
+        } else if (retrainMode) {
+            // ✅ Fallback: πάρε το ΠΡΟΗΓΟΥΜΕΝΟ DatasetConfiguration
+            DatasetConfiguration baseConf = retrainedFrom.getDatasetConfiguration();
+            if (baseConf == null)
+                return error("❌ Base training has no DatasetConfiguration.");
+
+            // Αν δεν δίνονται overrides, ΧΡΗΣΙΜΟΠΟΙΗΣΕ ΤΟ ΙΔΙΟ conf (χωρίς νέο save, αποφεύγεις duplicate)
+            if (!hasBasicCols && !hasTargetCol) {
+                datasetConf = baseConf;
+            } else {
+                // Αν υπάρχουν overrides, κλωνοποίησε για να μην αλλοιώσεις το παλιό
+                datasetConf = new DatasetConfiguration();
+                datasetConf.setDataset(baseConf.getDataset());
+                datasetConf.setBasicAttributesColumns(
+                        hasBasicCols ? request.getBasicCharacteristicsColumns() : baseConf.getBasicAttributesColumns());
+                datasetConf.setTargetColumn(
+                        hasTargetCol ? request.getTargetClassColumn() : baseConf.getTargetColumn());
+                datasetConf.setUploadDate(ZonedDateTime.now());
+                datasetConf = datasetConfigurationRepository.save(datasetConf);
+            }
+
+            datasetInstances = datasetService.loadTrainingInstances(datasetConf); // ✅
+
+        } else {
+            return error("❌ No valid dataset provided.");
         }
 
-        TrainingStatus trainStatus = trainingStatusRepository.findByName(TrainingStatusEnum.REQUESTED).orElseThrow(() -> new EntityNotFoundException("Training status not found."));
+        // ----- Resolve AlgorithmConfiguration (με υποστήριξη algorithmConfigurationId & retrain fallback)
+        AlgorithmConfiguration algorithmConf;
+
+        if (hasAlgorithmConfId) {
+            algorithmConf = algorithmConfigurationRepository.findById(Integer.parseInt(request.getAlgorithmConfigurationId()))
+                    .orElseThrow(() -> new EntityNotFoundException("AlgorithmConfiguration not found."));
+            // Αν δόθηκαν options, μπορείς να επιλέξεις να τα αγνοήσεις ή να επιτρέψεις override.
+            if (hasAlgorithmOpts) {
+                algorithmConf = new AlgorithmConfiguration(algorithmConf.getAlgorithm());
+                algorithmConf.setUser(user);
+                algorithmConf.setOptions(request.getOptions());
+                algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
+            }
+        } else if (hasAlgorithmId) {
+            Algorithm algorithm = algorithmRepository.findById(Integer.parseInt(request.getAlgorithmId()))
+                    .orElseThrow(() -> new EntityNotFoundException("Algorithm not found."));
+
+            algorithmConf = new AlgorithmConfiguration(algorithm);
+            algorithmConf.setUser(user);
+            algorithmConf.setOptions(hasAlgorithmOpts ? request.getOptions() : algorithm.getDefaultOptions());
+            algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
+
+        } else if (retrainMode) {
+            // ✅ Χρησιμοποίησε ΤΟ ΙΔΙΟ algorithm configuration από το base training (με προαιρετικά overrides)
+            AlgorithmConfiguration baseAlgConf = retrainedFrom.getAlgorithmConfiguration();
+            if (baseAlgConf == null)
+                return error("❌ Base training has no AlgorithmConfiguration.");
+
+            if (!hasAlgorithmOpts) {
+                // Χρησιμοποίησε το ίδιο config (καθόλου νέο save -> αποφεύγεις duplicates)
+                algorithmConf = baseAlgConf;
+            } else {
+                // Αν έστειλε νέα options, κλωνοποίησε/δημιούργησε νέο για να κρατήσεις το παλιό αναλλοίωτο
+                algorithmConf = new AlgorithmConfiguration(baseAlgConf.getAlgorithm());
+                algorithmConf.setUser(user);
+                algorithmConf.setOptions(request.getOptions());
+                algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
+            }
+        } else {
+            return error("❌ Algorithm information is required (algorithmId or algorithmConfigurationId).");
+        }
+
+        // ----- Προαιρετικός συμβατότητας έλεγχος (τύπος αλγορίθμου vs. dataset schema)
+        AlgorithmTypeEnum type = algorithmConf.getAlgorithm().getType().getName();
+        if (type == AlgorithmTypeEnum.CLASSIFICATION) {
+            // π.χ. έλεγξε ότι targetColumn είναι nominal (ή θα γίνει force nominal downstream όπως έχεις)
+        } else if (type == AlgorithmTypeEnum.REGRESSION) {
+            // π.χ. numeric target
+        } else if (type == AlgorithmTypeEnum.CLUSTERING) {
+            // π.χ. target δεν απαιτείται
+        }
+
+        // ----- Training
+        TrainingStatus trainStatus = trainingStatusRepository.findByName(TrainingStatusEnum.REQUESTED)
+                .orElseThrow(() -> new EntityNotFoundException("Training status not found."));
+
+        Training training = new Training();
         training.setUser(user);
         training.setStatus(trainStatus);
         training.setAlgorithmConfiguration(algorithmConf);
         training.setDatasetConfiguration(datasetConf);
+        training.setRetrainedFrom(retrainedFrom); // ✅ κρατάμε lineage
         training = trainingRepository.save(training);
+
+        log.info("✅ Training input ready: trainingId={}, datasetConfId={}, algorithmConfId={}",
+                training.getId(), datasetConf.getId(), algorithmConf.getId());
 
         return TrainingDataInput.builder()
                 .training(training)

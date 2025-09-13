@@ -11,18 +11,27 @@ import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
+import com.cloud_ml_app_thesis.exception.BadRequestException;
 import com.cloud_ml_app_thesis.exception.UserInitiatedStopException;
 import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.repository.DatasetConfigurationRepository;
+import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
 import com.cloud_ml_app_thesis.util.AlgorithmUtil;
 import com.cloud_ml_app_thesis.util.FileUtil;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import weka.classifiers.Classifier;
 import weka.clusterers.Clusterer;
 import weka.core.Instances;
@@ -42,6 +51,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 
+import static org.springframework.util.StringUtils.hasText;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -59,9 +70,16 @@ public class TrainService {
     private final ModelTypeRepository modelTypeRepository;
     private final TaskStatusService taskStatusService;
     private final AlgorithmTypeRepository algorithmTypeRepository;
+    private final EntityManager entityManager;
+    private final ModelExecutionRepository modelExecutionRepository;
+    private final AlgorithmParameterRepository algorithmParameterRepository;
+    private final CustomAlgorithmRepository customAlgorithmRepository;
+    private final TransactionTemplate transactionTemplate;
 
     @Transactional
     public void train(String taskId, User user, PredefinedTrainMetadata metadata) {
+        boolean complete = false;
+        Model model = null;
         log.info("🧠 Starting predefined training [taskId={}] for user={}", taskId, user.getUsername());
 
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
@@ -73,7 +91,6 @@ public class TrainService {
 
         Training training = trainingRepository.findById(metadata.trainingId())
                 .orElseThrow(() -> new EntityNotFoundException("Training not found"));
-        ;
 
         try {
             AlgorithmConfiguration config = algorithmConfigurationRepository.findById(metadata.algorithmConfigurationId())
@@ -109,7 +126,7 @@ public class TrainService {
             log.info("➡️ Class index set to: " + data.classIndex());
             log.info("➡️ Class attribute name: " + data.classAttribute().name());
             log.info("⏳ Sleeping for 20 seconds before starting training (for manual stop testing)");
-            Thread.sleep(20000);
+            //Thread.sleep(10000);
             if (taskStatusService.stopRequested(taskId)) {
                 throw new UserInitiatedStopException("User requested stop for task " + taskId);
             }
@@ -121,9 +138,6 @@ public class TrainService {
                 AlgorithmUtil.setClassifierOptions(cls, optionsArray);
                 Thread.sleep(5000);
                 log.info("🧪 Checking stop status after delay...");
-                if (taskStatusService.stopRequested(taskId)) {
-                    throw new UserInitiatedStopException("User requested stop for task " + taskId);
-                }
                 cls.buildClassifier(trainData);
                 evaluationResult = modelService.evaluateClassifier(cls, trainData, testData);
                 results = evaluationResult.getSummary();
@@ -192,40 +206,53 @@ public class TrainService {
             training.setFinishedDate(ZonedDateTime.now());
             trainingRepository.save(training);
             modelService.saveModel(training, modelUrl, metricsUrl, predefined, user);
-            Model model = modelRepository.findByTraining(training)
+            model = modelRepository.findByTraining(training)
                     .orElseThrow(() -> new EntityNotFoundException("Model not linked to training"));
+           // log.info("⏳ Sleeping for 20 seconds after starting training (for manual stop testing)");
+            Thread.sleep(10000);
+            complete = true;
+            if (taskStatusService.stopRequested(taskId)) {
+                throw new UserInitiatedStopException("User requested stop after model and metrics were uploaded");
+            }
             TrainingStatus completed = trainingStatusRepository.findByName(TrainingStatusEnum.COMPLETED)
                     .orElseThrow(() -> new IllegalStateException("TrainingStatus COMPLETED not found"));
 
             training.setModel(model);
             training.setStatus(completed);
             trainingRepository.save(training);
-            taskStatusService.completeTask(taskId);
-            task.setModelId(model.getId());
-            task.setTrainingId(training.getId());
-            taskStatusRepository.save(task);
 
+            if (task.getStatus() != TaskStatusEnum.STOPPED) {
+                taskStatusService.completeTask(taskId);
+                task.setModelId(model.getId());
+                task.setTrainingId(training.getId());
+                taskStatusRepository.save(task);
+            }
             log.info("✅ Training complete [taskId={}] with modelId={}", taskId, model.getId());
 
-        }catch(UserInitiatedStopException e) {
+        } catch (UserInitiatedStopException e) {
             log.warn("🛑 Training manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
-            taskStatusService.taskStopped(taskId);
-            task.setTrainingId(training.getId());
 
-                training.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
-                        .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found")));
-                training.setResults(e.getMessage());
-                training.setFinishedDate(ZonedDateTime.now());
-                trainingRepository.save(training);
+            taskStatusService.taskStoppedTraining(taskId, training.getId(), model.getId());
+
+            TrainingStatusEnum finalStatus = complete
+                    ? TrainingStatusEnum.COMPLETED
+                    : TrainingStatusEnum.FAILED;
+
+            training.setStatus(trainingStatusRepository.findByName(finalStatus)
+                    .orElseThrow(() -> new EntityNotFoundException("TrainingStatus completed")));
+            training.setFinishedDate(ZonedDateTime.now());
+
+            trainingRepository.save(training);
         } catch (Exception e) {
             log.error("❌ Training failed [taskId={}]: {}", taskId, e.getMessage(), e);
             taskStatusService.taskFailed(taskId, e.getMessage());
             task.setTrainingId(training.getId());
-                training.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
-                        .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found")));
-                training.setResults(e.getMessage());
-                training.setFinishedDate(ZonedDateTime.now());
-                trainingRepository.save(training);
+            taskStatusRepository.save(task);
+            training.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
+                    .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found")));
+            training.setResults(e.getMessage());
+            training.setFinishedDate(ZonedDateTime.now());
+            trainingRepository.save(training);
 
             throw new RuntimeException("Predefined training failed", e);
         }
@@ -254,18 +281,15 @@ public class TrainService {
                     ? trainingRepository.findFromDateAndCustomAlgorithm(user, from, algorithmId)
                     : trainingRepository.findFromDateAndPredefinedAlgorithm(user, from, algorithmId);
 
-        }
-        else if (from == null && algorithmId == null && type != null) {
+        } else if (from == null && algorithmId == null && type != null) {
             trainings = (type == ModelTypeEnum.CUSTOM)
                     ? trainingRepository.findAllCustom(user)
                     : trainingRepository.findAllPredefined(user);
-        }
-        else if (from != null && algorithmId == null && type != null) {
+        } else if (from != null && algorithmId == null && type != null) {
             trainings = (type == ModelTypeEnum.CUSTOM)
                     ? trainingRepository.findAllFromDateAndCustom(user, from)
                     : trainingRepository.findAllFromDateAndPredefined(user, from);
-        }
-        else {
+        } else {
             throw new IllegalArgumentException("If algorithmId is provided, algorithmType must also be specified.");
         }
 
@@ -285,4 +309,64 @@ public class TrainService {
                 .toList();
     }
 
+    @Transactional
+    public void deleteTrain(Integer id, User currentUser) {
+        Training training = trainingRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+
+        log.info("Training to delete {}", training.getId());
+
+        if (!training.getUser().getUsername().equals(currentUser.getUsername())) {
+            throw new AuthorizationDeniedException("Not allowed");
+        }
+        if (training.getStatus().getName() == TrainingStatusEnum.RUNNING
+                || training.getStatus().getName() == TrainingStatusEnum.REQUESTED) {
+            throw new BadRequestException("Cannot delete unfinished train");
+        }
+
+        // Prepare MinIO keys if model exists
+        String modelKey = null, metricsKey = null;
+        Model model = training.getModel();
+
+        if (model != null) {
+            if (model.getModelUrl() != null && !model.getModelUrl().isBlank()) {
+                modelKey = minioService.extractMinioKey(model.getModelUrl());
+            }
+            if (model.getMetricsUrl() != null && !model.getMetricsUrl().isBlank()) {
+                metricsKey = minioService.extractMinioKey(model.getMetricsUrl());
+            }
+
+            // Break relation and delete model
+            model.setTraining(null);
+            training.setModel(null);
+        }
+
+        trainingRepository.delete(training);
+
+        // MinIO cleanup after commit
+        final String finalModelKey = modelKey;
+        final String finalMetricsKey = metricsKey;
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                if (finalModelKey != null) {
+                    try {
+                        minioService.deleteObject(bucketResolver.resolve(BucketTypeEnum.MODEL), finalModelKey);
+                    } catch (Exception ex) {
+                        log.warn("MinIO delete failed for model {}", finalModelKey, ex);
+                    }
+                }
+                if (finalMetricsKey != null) {
+                    try {
+                        minioService.deleteObject(bucketResolver.resolve(BucketTypeEnum.METRICS), finalMetricsKey);
+                    } catch (Exception ex) {
+                        log.warn("MinIO delete failed for metrics {}", finalMetricsKey, ex);
+                    }
+                }
+            }
+        });
+
+        log.info("✅ Training {} and its model were deleted", id);
+    }
 }
+

@@ -59,8 +59,11 @@ select * from algorithms
 
 select * from categories;
 
-select *
-from trainings;
+select * from trainings order by id asc;
+
+select * from models where training_id=145;
+
+select * from models_executions where model_id=97;
 
 
 select * from dataset_configurations;
@@ -80,7 +83,11 @@ select * from custom_algorithm_configurations;
 
 select * from dataset_configurations;
 
-select * from trainings;
+select * from trainings where id=142;
+
+
+select * from models where training_id=142;
+
 
 select * from custom_algorithms;
 
@@ -104,10 +111,18 @@ VALUES
 ALTER TABLE async_task_status
     ADD COLUMN stop_requested BOOLEAN DEFAULT FALSE NOT NULL;
 
-select * from async_task_status;
+select * from async_task_status where task_id='f44f9086-6320-4d19-99d9-242dd5a11b30';
+select * from trainings where id=145;
 
-select * from trainings;
+select * from models where training_id=145;
 
+select * from users where username='dtrump';
+
+select * from models where id=102;
+
+
+
+select * from models_executions where model_id=97;
 ALTER TABLE async_task_status
     DROP CONSTRAINT async_task_status_status_check;
 
@@ -120,3 +135,4 @@ ALTER TABLE async_task_status
             );
 
 
+select * from async_task_status;

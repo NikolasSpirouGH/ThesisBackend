@@ -9,6 +9,7 @@ import com.cloud_ml_app_thesis.exception.MinioFileUploadException;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import io.minio.errors.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -190,4 +191,27 @@ public class MinioService {
         }
     }
 
+    public void deleteObject(String bucketName, String objectName)  {
+        if (bucketName == null || bucketName.isBlank()) {
+            throw new IllegalArgumentException("bucket is required");
+        }
+        if (objectName == null || objectName.isBlank()) {
+            throw new IllegalArgumentException("object key is required");
+        }
+
+        try{
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(bucketName)
+                            .object(objectName)
+                            .build()
+            );
+            log.info("Deleted object [{}] from bucket [{}]", objectName, bucketName);
+        }catch(ErrorResponseException e){
+            log.warn("Minio delete failed [{}/{}]: {} ({})",
+                    bucketName, objectName, e.errorResponse().message(), e.errorResponse().code());
+        }catch(Exception e){
+            log.error("MinIO delete failed [{}/{}]: {}", bucketName, objectName, e.getMessage());
+            throw new RuntimeException("Failed to delete object from MinIO", e);        }
+    }
 }

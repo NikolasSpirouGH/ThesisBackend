@@ -51,11 +51,18 @@ public class Training {
     @JoinColumn(name = "dataset_id", nullable = false)
     private DatasetConfiguration datasetConfiguration;
 
+    @Version
+    private Integer version;
+
     @OneToOne(mappedBy = "training", cascade = CascadeType.ALL, orphanRemoval = true)
     private Model model;
 
     @Column(name = "results", length = 3000)
     private String results;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "retrained_from")
+    private Training retrainedFrom;
 
     // Optional: Validate at runtime that only one of the two algorithm configs is used
 //    @PostLoad

@@ -104,5 +104,7 @@ public interface TrainingRepository extends JpaRepository<Training, Integer> {
 """)
     List<Training> findAllFromDateAndPredefined(@Param("user") User user, @Param("from") ZonedDateTime from);
 
+    boolean existsByCustomAlgorithmConfigurationIdAndIdNot(Integer cfgId, Integer id);
+
 }
 

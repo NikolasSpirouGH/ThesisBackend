@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface ModelExecutionRepository  extends JpaRepository<ModelExecution, Integer> {
     Optional<ModelExecution> findByModelIdAndDatasetId(Integer modelId, Integer datasetId);
 
+    int countByModelId(Integer id);
 }

@@ -172,8 +172,8 @@ public class ModelService {
         model.setStatus(modelStatusRepository.findByName(ModelStatusEnum.IN_PROGRESS)
                 .orElseThrow(() -> new EntityNotFoundException("Could not find IN_PROGRESS model status")));
         model.setModelType(modelType);
-        ZonedDateTime finishedZoned = training.getFinishedDate().withZoneSameInstant(ZoneId.of("Europe/Athens"));
-        model.setFinishedAt(finishedZoned);
+        //ZonedDateTime finishedZoned = training.getFinishedDate().withZoneSameInstant(ZoneId.of("Europe/Athens"));
+        model.setFinishedAt(ZonedDateTime.now());
         model.setAccessibility(accessibility);
         model.setCategory(defaultCategory);
 

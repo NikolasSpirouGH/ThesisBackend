@@ -9,7 +9,7 @@ import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.entity.Algorithm;
 import com.cloud_ml_app_thesis.service.AlgorithmService;
 import com.cloud_ml_app_thesis.service.CustomAlgorithmService;
-import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import com.cloud_ml_app_thesis.dto.weka_algorithm.WekaAlgorithmDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.info.Info;
@@ -67,9 +67,10 @@ public class AlgorithmController {
     }
 
     @GetMapping("/get-algorithms")
-    public ResponseEntity<List<Algorithm>> getAlgorithms() {
+    public ResponseEntity<List<WekaAlgorithmDTO>> getAlgorithms() {
         return ResponseEntity.ok(algorithmService.getAlgorithms());
     }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteAlgorithm(@AuthenticationPrincipal UserDetails userDetails, @PathVariable @Positive Integer id) {

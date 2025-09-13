@@ -83,6 +83,7 @@ public class TaskStatusService {
         log.info("[TASK INIT] [{}] [{}] by user={}", taskType, taskId, username);
     }
 
+
     public void completeTask(String taskId) {
         taskStatusRepository.findByTaskId(taskId).ifPresent(task -> {
             task.setStatus(TaskStatusEnum.COMPLETED);
@@ -102,36 +103,32 @@ public class TaskStatusService {
         });
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void stopTask(String taskId, String username) throws InterruptedException {
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
                 .orElseThrow(() -> new EntityNotFoundException("Task not found"));
         if (!task.getUsername().equals(username)) {
             throw new AuthorizationDeniedException("You are not allowed to stop this task.");
         }
-        task.setStopRequested(true);
-        taskStatusRepository.save(task);
+        int updated = taskStatusRepository.updateStopRequested(taskId, true);
+        log.info("Updated stop requested [{}]", updated);
+        if (updated == 0) {
+            throw new EntityNotFoundException("Task not found: " + taskId);
+        }
+        log.info("🛑 stopTask({}) by {}", taskId, username);
+
         Thread.sleep(3000);
     }
 
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+
     public boolean stopRequested(String taskId) {
-        Boolean result = taskStatusRepository.fetchFresh(taskId);
+        Boolean result = taskStatusRepository.findStopRequested(taskId);
         log.info("🧪 stopRequested({}) = {}", taskId, result);
         return Boolean.TRUE.equals(result);
     }
 
-    @Transactional
-    public void taskStopped(String taskId) {
-        AsyncTaskStatus task = taskStatusRepository.findById(taskId)
-                .orElseThrow(() -> new IllegalArgumentException("No task with id: " + taskId));
-
-        task.setStatus(TaskStatusEnum.STOPPED);
-        task.setErrorMessage("Task stopped by user");
-        task.setFinishedAt(ZonedDateTime.now());
-
-        log.info("🧪 Saving task status STOPPED [{}]", task);
-        taskStatusRepository.save(task);
+    public void taskStoppedTraining(String taskId, Integer trainingId, Integer modelId) {
+        taskStatusRepository.markTaskStopped(taskId, trainingId, modelId);
+        log.info("🛑 Task {} marked as STOPPED with trainingId={}, modelId={}", taskId, trainingId, modelId);
     }
 }
 

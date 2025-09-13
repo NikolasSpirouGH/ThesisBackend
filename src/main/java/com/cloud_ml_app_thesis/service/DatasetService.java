@@ -318,5 +318,16 @@ public class DatasetService {
                 1 // prediction mode
         );
     }
+
+    public Instances loadTrainingInstances(DatasetConfiguration conf) throws Exception {
+        // Αν έχεις ήδη κάτι αντίστοιχο, χρησιμοποίησέ το — αυτό είναι safe default.
+        String[] minioInfo = DatasetUtil.resolveDatasetMinioInfo(conf.getDataset());
+        String bucket = minioInfo[0];
+        String objectName = minioInfo[1];
+
+        try (InputStream in = minioService.loadObjectAsInputStream(bucket, objectName)) {
+            return DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(conf, in, objectName);
+        }
+    }
 }
 

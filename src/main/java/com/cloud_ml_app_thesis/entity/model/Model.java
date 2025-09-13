@@ -36,13 +36,16 @@ public class Model {
     @Column(name = "model_url", length = 1000)
     private String modelUrl;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "model_type_id", nullable = false)
     private ModelType modelType;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "status_id")
     private ModelStatus status;
+
+    @Version
+    private Integer version;
 
     @ManyToOne
     @JoinColumn(name = "accessibility_id")
@@ -84,10 +87,9 @@ public class Model {
     @OneToMany(mappedBy = "model", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ModelExecution> executions;
 
-    @OneToMany(mappedBy = "model", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "model")
     private List<ModelShare> shares = new ArrayList<>();
 
     @Column(name = "metrics_url")
     private String metricsUrl;
-
 }

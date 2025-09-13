@@ -22,11 +22,10 @@ public class AsyncManager {
 
     private final CustomTrainingService customTrainingService;
     private final CustomPredictionService customPredictionService;
-    private final TrainService trainService;
+        private final TrainService trainService;
     private final ModelExecutionService modelExecutionService;
 
     @Async
-    @Transactional
     public CompletableFuture<Void> customTrainAsync(String taskId, User user, CustomTrainMetadata metadata) {
         log.info("🔍 [ASYNC] Training started [taskId={}]", taskId);
         try {
@@ -34,13 +33,11 @@ public class AsyncManager {
             return CompletableFuture.completedFuture(null);
 
         } catch (Exception e) {
-            CompletableFuture.failedFuture(e);
             return CompletableFuture.failedFuture(e);
         }
     }
 
     @Async
-    @Transactional
     public CompletableFuture<Void> trainAsync(String taskId, User user, PredefinedTrainMetadata metadata) {
         log.info("🔍 [ASYNC] Training started [taskId={}]", taskId);
         try {
@@ -48,13 +45,11 @@ public class AsyncManager {
             return CompletableFuture.completedFuture(null);
 
         } catch (Exception e) {
-            CompletableFuture.failedFuture(e);
             return CompletableFuture.failedFuture(e);
         }
     }
 
     @Async
-    @Transactional
     public CompletableFuture<String> predictCustom(String taskId, Integer modelId, String datasetKey, User user) {
         log.info("🔍 [ASYNC] Prediction started [taskId={}]", taskId);
         try {
@@ -63,13 +58,11 @@ public class AsyncManager {
             return CompletableFuture.completedFuture(null);
 
         } catch (Exception e) {
-           CompletableFuture.failedFuture(e);
            return CompletableFuture.failedFuture(e);
         }
     }
 
     @Async
-    @Transactional
     public CompletableFuture<String> predictPredefined(String taskId, Integer modelId, String datasetKey, User user) {
         log.info("🔍 [ASYNC] Prediction started [taskId={}]", taskId);
         try {
@@ -78,7 +71,6 @@ public class AsyncManager {
             return CompletableFuture.completedFuture(null);
 
         } catch (Exception e) {
-            CompletableFuture.failedFuture(e);
             return CompletableFuture.failedFuture(e);
         }
     }

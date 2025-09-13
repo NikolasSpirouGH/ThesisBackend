@@ -2,12 +2,15 @@ package com.cloud_ml_app_thesis.exception;
 
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.dto.response.Metadata;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.StaleStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.http.*;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
@@ -62,12 +65,30 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<GenericResponse<?>> handleEntityNotFound(EntityNotFoundException ex) {
+        GenericResponse<?> response = new GenericResponse<>(null, "ENTITY_NOT_FOUND", ex.getMessage(), new Metadata());
+        return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+    }
+
     // ✅ 4. Access denied (forbidden)
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<GenericResponse<?>> handleAccessDeniedException(AccessDeniedException ex) {
         logger.warn("Access denied: {}", ex.getMessage());
         GenericResponse<?> response = new GenericResponse<>(null, "ACCESS_DENIED", "You are not authorized to access this resource", new Metadata());
         return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<GenericResponse<?>> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        GenericResponse<?> response = new GenericResponse<>(null, "410", "The record was modified or deleted by another User", new Metadata());
+        return new ResponseEntity<>(response, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(StaleStateException.class)
+    public ResponseEntity<GenericResponse<?>> handleStaleState(StaleStateException ex) {
+        GenericResponse<?> response = new GenericResponse<>(null, "410", "The record no longer exists or has been updated", new Metadata());
+        return new ResponseEntity<>(response, HttpStatus.CONFLICT);
     }
 
     // ✅ 5. Custom application-specific

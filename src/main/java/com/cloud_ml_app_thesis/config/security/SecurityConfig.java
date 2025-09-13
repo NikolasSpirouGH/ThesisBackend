@@ -55,7 +55,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
         config.setAllowedOrigins(List.of(
-                "http://localhost:3000",   // React frontend
+                "http://localhost:5173",   // React frontend
                 "http://localhost:8080",   // Redoc loaded from Spring static folder
                 "null"                     // Redoc loaded from file://
         ));

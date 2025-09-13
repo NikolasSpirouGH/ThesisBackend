@@ -63,22 +63,21 @@ public class User {
     @JoinColumn(name = "status_id")
     private UserStatus status;
 
-
     @JsonIgnore
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "user")
     private List<Training> trainings;
 
 //    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
 //    private List<Model> models;
 
-    @OneToMany(mappedBy = "executedByUser", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "executedByUser")
     private List<ModelExecution> modelExecutions;
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "user")
     @JsonIgnore
     private List<Dataset> datasets;
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "user")
     @JsonIgnore
     private List<AlgorithmConfiguration> algorithmConfigurations;
 

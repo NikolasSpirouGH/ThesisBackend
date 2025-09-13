@@ -2,6 +2,7 @@ package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.dto.request.algorithm.AlgorithmCreateRequest;
 import com.cloud_ml_app_thesis.dto.request.algorithm.AlgorithmUpdateRequest;
+import com.cloud_ml_app_thesis.dto.weka_algorithm.WekaAlgorithmDTO;
 import com.cloud_ml_app_thesis.entity.Algorithm;
 import com.cloud_ml_app_thesis.entity.AlgorithmConfiguration;
 import com.cloud_ml_app_thesis.repository.AlgorithmConfigurationRepository;
@@ -91,8 +92,15 @@ public class AlgorithmService {
         return wekaAlgoInfos;
     }
 
-    public List<Algorithm> getAlgorithms() {
-        return algorithmRepository.findAll();
+    public List<WekaAlgorithmDTO> getAlgorithms() {
+        return algorithmRepository.findAll()
+                .stream()
+                .map(algorithm -> WekaAlgorithmDTO.builder()
+                        .id(algorithm.getId())
+                        .name(algorithm.getName())
+                        .build()
+                )
+                .toList();
     }
 
     //TODO check if it is necessary to exist

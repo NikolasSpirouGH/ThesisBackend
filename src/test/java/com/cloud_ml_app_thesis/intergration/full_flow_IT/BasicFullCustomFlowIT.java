@@ -4,6 +4,8 @@ import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.*;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -15,7 +17,8 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.fail;
 
-@ActiveProfiles("local")
+//@ActiveProfiles("local")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestPropertySource(properties = {
@@ -23,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 })
 public class BasicFullCustomFlowIT {
 
+    @LocalServerPort
+    int port;
     String jwtToken ;
     Integer modelId;
     String taskId;
@@ -32,7 +37,7 @@ public class BasicFullCustomFlowIT {
 
     @BeforeEach
     void setUp() {
-        RestAssured.port = 8080;
+        RestAssured.port = port;
         RestAssured.baseURI = "http://localhost";
         loginAndSetToken();
     }
@@ -44,6 +49,7 @@ public class BasicFullCustomFlowIT {
         File dockerTarFile = new ClassPathResource("algorithms/bigspy_logreg.tar").getFile();
 
         Response response = given()
+                .port(port)
                 .auth().oauth2(jwtToken)
                 .multiPart("name", "testalgo")
                 .multiPart("description", "test description")
@@ -77,6 +83,7 @@ public class BasicFullCustomFlowIT {
         File datasetFile = new ClassPathResource("datasets/four_cols_nominal_train.csv").getFile();
 
         Response rawResponse = given()
+                .port(port)
                 .auth().oauth2(jwtToken)
                 .contentType(ContentType.MULTIPART)
                 .multiPart("datasetFile", datasetFile)
@@ -97,6 +104,7 @@ public class BasicFullCustomFlowIT {
         waitForTaskCompletion(taskId);
 
         modelId = given()
+                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .when()
                 .get("/api/tasks/{taskId}/model-id", taskId)
@@ -128,6 +136,7 @@ public class BasicFullCustomFlowIT {
         """;
 
         Response finalizedResponse = given()
+                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .contentType(ContentType.JSON)
                 .body(finalizePayload)
@@ -155,6 +164,7 @@ public class BasicFullCustomFlowIT {
         File predictionFile = new ClassPathResource("datasets/prediction_nominal_custom.csv").getFile();
 
         Response predictionResponse = given()
+                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .contentType(ContentType.MULTIPART)
                 .multiPart("predictionFile", predictionFile)
@@ -174,6 +184,7 @@ public class BasicFullCustomFlowIT {
         waitForTaskCompletion(predictionTaskId);
 
          executionId = given()
+                 .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .get("/api/tasks/{taskId}/execution-id", predictionTaskId)
                 .then()
@@ -195,6 +206,7 @@ public class BasicFullCustomFlowIT {
         Assertions.assertNotNull(this.executionId, "❌ executionId is null");
 
         Response downloadResponse = given()
+                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .get("/api/model-exec/{executionId}/result", this.executionId)
                 .then()
@@ -215,6 +227,7 @@ public class BasicFullCustomFlowIT {
 
         for (int i = 1; i <= maxTries; i++) {
             Response response = given()
+                    .port(port)
                     .header("Authorization", "Bearer " + jwtToken)
                     .get("/api/tasks/" + taskId)
                     .then()
@@ -253,6 +266,7 @@ public class BasicFullCustomFlowIT {
            """;
 
         Response response = given()
+                .port(port)
                 .contentType(ContentType.JSON)
                 .body(loginPayload)
                 .post("/api/auth/login")
