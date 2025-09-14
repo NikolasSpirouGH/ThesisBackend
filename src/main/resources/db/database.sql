@@ -31,6 +31,8 @@ select * from jwt_tokens;
 
 select * from models_executions;
 
+select * from async_task_status where task_id='9b24ba36-d29f-4536-a1f2-20566d69b60c';
+
 select * from async_task_status;
 
 select * from algorithms where class_name='weka.classifiers.functions.LinearRegression';
@@ -112,7 +114,7 @@ ALTER TABLE async_task_status
     ADD COLUMN stop_requested BOOLEAN DEFAULT FALSE NOT NULL;
 
 select * from async_task_status where task_id='f44f9086-6320-4d19-99d9-242dd5a11b30';
-select * from trainings where id=145;
+select * from trainings;
 
 select * from models where training_id=145;
 
@@ -121,7 +123,8 @@ select * from users where username='dtrump';
 select * from models where id=102;
 
 
-
+select * from trainings;
+select * from async_task_status where task_id='441ebe28-efc3-43d7-b391-21cbd76dc6b5';
 select * from models_executions where model_id=97;
 ALTER TABLE async_task_status
     DROP CONSTRAINT async_task_status_status_check;
@@ -135,4 +138,5 @@ ALTER TABLE async_task_status
             );
 
 
-select * from async_task_status;
+select * from async_task_status where task_id='82318627-027b-438c-a4a9-81842bd29444';
+select * from trainings where id=29;

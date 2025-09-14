@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -76,10 +77,11 @@ public class TrainService {
     private final CustomAlgorithmRepository customAlgorithmRepository;
     private final TransactionTemplate transactionTemplate;
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void train(String taskId, User user, PredefinedTrainMetadata metadata) {
         boolean complete = false;
         Model model = null;
+        Integer trainingId = null;
         log.info("🧠 Starting predefined training [taskId={}] for user={}", taskId, user.getUsername());
 
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
@@ -107,6 +109,8 @@ public class TrainService {
             training.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.RUNNING)
                     .orElseThrow(() -> new EntityNotFoundException("Status RUNNING not found")));
             training = trainingRepository.save(training);
+            trainingId = training.getId();
+            entityManager.detach(training);
 
             String results;
             byte[] modelBytes;
@@ -202,9 +206,7 @@ public class TrainService {
             ModelType predefined = modelTypeRepository.findByName(ModelTypeEnum.PREDEFINED)
                     .orElseThrow(() -> new EntityNotFoundException("AlgorithmType PREDEFINED not found"));
 
-            training.setResults(results);
-            training.setFinishedDate(ZonedDateTime.now());
-            trainingRepository.save(training);
+
             modelService.saveModel(training, modelUrl, metricsUrl, predefined, user);
             model = modelRepository.findByTraining(training)
                     .orElseThrow(() -> new EntityNotFoundException("Model not linked to training"));
@@ -214,19 +216,33 @@ public class TrainService {
             if (taskStatusService.stopRequested(taskId)) {
                 throw new UserInitiatedStopException("User requested stop after model and metrics were uploaded");
             }
-            TrainingStatus completed = trainingStatusRepository.findByName(TrainingStatusEnum.COMPLETED)
-                    .orElseThrow(() -> new IllegalStateException("TrainingStatus COMPLETED not found"));
 
-            training.setModel(model);
-            training.setStatus(completed);
-            trainingRepository.save(training);
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            Integer finalTrainingId = trainingId;
+            Model finalModel = model;
+            transactionTemplate.executeWithoutResult(status -> {
+                Training tr = trainingRepository.findById(finalTrainingId)
+                        .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+                tr.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.COMPLETED)
+                        .orElseThrow(() -> new EntityNotFoundException("TrainingStatus COMPLETED not found")));
+                tr.setResults(results);
+                tr.setModel(finalModel);
+                tr.setFinishedDate(ZonedDateTime.now());
+                trainingRepository.saveAndFlush(tr);
+            });
 
-            if (task.getStatus() != TaskStatusEnum.STOPPED) {
-                taskStatusService.completeTask(taskId);
-                task.setModelId(model.getId());
-                task.setTrainingId(training.getId());
-                taskStatusRepository.save(task);
-            }
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            Model finalModel1 = model;
+            Integer finalTrainingId1 = trainingId;
+            transactionTemplate.executeWithoutResult(status -> {
+                if (task.getStatus() != TaskStatusEnum.STOPPED) {
+                    taskStatusService.completeTask(taskId); // bumps version
+                    AsyncTaskStatus fresh = taskStatusRepository.findById(taskId).orElseThrow();
+                    fresh.setModelId(finalModel1.getId());
+                    fresh.setTrainingId(finalTrainingId1);
+                    taskStatusRepository.saveAndFlush(fresh);
+                }
+            });
             log.info("✅ Training complete [taskId={}] with modelId={}", taskId, model.getId());
 
         } catch (UserInitiatedStopException e) {
@@ -243,16 +259,36 @@ public class TrainService {
             training.setFinishedDate(ZonedDateTime.now());
 
             trainingRepository.save(training);
-        } catch (Exception e) {
+        }catch (Exception e) {
             log.error("❌ Training failed [taskId={}]: {}", taskId, e.getMessage(), e);
+
+            // Task -> FAILED (η μέθοδος στο service να είναι REQUIRES_NEW + saveAndFlush)
             taskStatusService.taskFailed(taskId, e.getMessage());
-            task.setTrainingId(training.getId());
-            taskStatusRepository.save(task);
-            training.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
-                    .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found")));
-            training.setResults(e.getMessage());
-            training.setFinishedDate(ZonedDateTime.now());
-            trainingRepository.save(training);
+
+            // για να μην «γκρινιάζει» ο compiler μέσα στο lambda, πάρε ένα final alias
+            final Integer tid = trainingId;
+
+            if (tid != null) {
+                // Training -> FAILED (REQUIRES_NEW + fresh read)
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                transactionTemplate.executeWithoutResult(status -> {
+                    Training tr = trainingRepository.findById(tid)
+                            .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+                    tr.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
+                            .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found")));
+                    tr.setResults(e.getMessage());
+                    tr.setFinishedDate(ZonedDateTime.now());
+                    trainingRepository.saveAndFlush(tr);
+                });
+
+                // attach trainingId στο Task (REQUIRES_NEW)
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                transactionTemplate.executeWithoutResult(status -> {
+                    var t = taskStatusRepository.findById(taskId).orElseThrow();
+                    t.setTrainingId(tid);
+                    taskStatusRepository.saveAndFlush(t);
+                });
+            }
 
             throw new RuntimeException("Predefined training failed", e);
         }

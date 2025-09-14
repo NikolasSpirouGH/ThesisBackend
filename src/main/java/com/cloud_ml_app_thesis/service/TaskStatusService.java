@@ -70,6 +70,7 @@ public class TaskStatusService {
         return task;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void initTask(String taskId, TaskTypeEnum taskType, String username) {
         AsyncTaskStatus status = AsyncTaskStatus.builder()
                 .taskId(taskId)
@@ -84,6 +85,7 @@ public class TaskStatusService {
     }
 
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void completeTask(String taskId) {
         taskStatusRepository.findByTaskId(taskId).ifPresent(task -> {
             task.setStatus(TaskStatusEnum.COMPLETED);
@@ -93,6 +95,7 @@ public class TaskStatusService {
         });
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void taskFailed(String taskId, String errorMessage) {
         taskStatusRepository.findByTaskId(taskId).ifPresent(task -> {
             task.setStatus(TaskStatusEnum.FAILED);
@@ -126,6 +129,7 @@ public class TaskStatusService {
         return Boolean.TRUE.equals(result);
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void taskStoppedTraining(String taskId, Integer trainingId, Integer modelId) {
         taskStatusRepository.markTaskStopped(taskId, trainingId, modelId);
         log.info("🛑 Task {} marked as STOPPED with trainingId={}, modelId={}", taskId, trainingId, modelId);

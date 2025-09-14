@@ -28,6 +28,9 @@ public class AsyncTaskStatus {
 
     private String errorMessage;
 
+    @Version
+    private Integer version;
+
     private ZonedDateTime startedAt;
     private ZonedDateTime finishedAt;
 
