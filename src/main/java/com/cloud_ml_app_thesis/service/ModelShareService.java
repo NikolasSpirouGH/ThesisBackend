@@ -1,30 +1,31 @@
 package com.cloud_ml_app_thesis.service;
 
-import com.cloud_ml_app_thesis.entity.User;
-import com.cloud_ml_app_thesis.entity.model.Model;
-import com.cloud_ml_app_thesis.entity.model.ModelShare;
-import com.cloud_ml_app_thesis.entity.model.ModelShareHistory;
-import com.cloud_ml_app_thesis.entity.action.ModelShareActionType;
-import com.cloud_ml_app_thesis.enumeration.action.ModelShareActionTypeEnum;
-import com.cloud_ml_app_thesis.helper.AuthorizationHelper;
-import com.cloud_ml_app_thesis.repository.UserRepository;
-import com.cloud_ml_app_thesis.repository.model.ModelRepository;
-import com.cloud_ml_app_thesis.repository.model.ModelShareHistoryRepository;
-import com.cloud_ml_app_thesis.repository.model.ModelShareRepository;
-import com.cloud_ml_app_thesis.repository.action.ModelShareActionTypeRepository;
-import com.cloud_ml_app_thesis.util.SecurityUtils;
-import jakarta.persistence.EntityNotFoundException;
-import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.*;
+import com.cloud_ml_app_thesis.entity.User;
+import com.cloud_ml_app_thesis.entity.action.ModelShareActionType;
+import com.cloud_ml_app_thesis.entity.model.Model;
+import com.cloud_ml_app_thesis.entity.model.ModelShare;
+import com.cloud_ml_app_thesis.entity.model.ModelShareHistory;
+import com.cloud_ml_app_thesis.enumeration.action.ModelShareActionTypeEnum;
+import com.cloud_ml_app_thesis.helper.AuthorizationHelper;
+import com.cloud_ml_app_thesis.repository.UserRepository;
+import com.cloud_ml_app_thesis.repository.action.ModelShareActionTypeRepository;
+import com.cloud_ml_app_thesis.repository.model.ModelRepository;
+import com.cloud_ml_app_thesis.repository.model.ModelShareHistoryRepository;
+import com.cloud_ml_app_thesis.repository.model.ModelShareRepository;
 
-import static com.cloud_ml_app_thesis.util.SecurityUtils.hasAnyRole;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
