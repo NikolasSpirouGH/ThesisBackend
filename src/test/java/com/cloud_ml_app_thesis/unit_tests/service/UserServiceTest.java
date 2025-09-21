@@ -1,10 +1,33 @@
 package com.cloud_ml_app_thesis.unit_tests.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Spy;
+import org.modelmapper.ModelMapper;
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
+
 import com.cloud_ml_app_thesis.dto.request.user.PasswordChangeRequest;
-import com.cloud_ml_app_thesis.entity.PasswordResetToken;
 import com.cloud_ml_app_thesis.dto.request.user.UserUpdateRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.dto.user.UserDTO;
+import com.cloud_ml_app_thesis.entity.PasswordResetToken;
 import com.cloud_ml_app_thesis.entity.Role;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.status.UserStatus;
@@ -13,22 +36,7 @@ import com.cloud_ml_app_thesis.enumeration.status.UserStatusEnum;
 import com.cloud_ml_app_thesis.repository.PasswordResetTokenRepository;
 import com.cloud_ml_app_thesis.repository.UserRepository;
 import com.cloud_ml_app_thesis.service.UserService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Spy;
-import org.modelmapper.ModelMapper;
-
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
+import com.cloud_ml_app_thesis.service.security.AuthService;
 
 
 @ExtendWith(org.mockito.junit.jupiter.MockitoExtension.class)
@@ -40,10 +48,13 @@ class UserServiceTest {
     @Mock private Argon2PasswordEncoder passwordEncoder;
     @Mock private PasswordResetTokenRepository tokenRepository;
 
-
     @Spy
     @InjectMocks
     private UserService userService;
+
+    @Mock
+    private AuthService authService;
+
 
     private User testUser;
     private final String RAW_OLD_PASSWORD = "oldPass123";
@@ -109,7 +120,7 @@ class UserServiceTest {
         when(passwordEncoder.matches("oldPass", user.getPassword())).thenReturn(true);
         when(passwordEncoder.encode("newPass123")).thenReturn("$argon2id$...newEncoded");
 
-        GenericResponse<?> response = userService.changePassword(user, request);
+        GenericResponse<?> response = authService.changePassword(user, request);
 
         assertEquals("Password changed successfully", response.getMessage());
         verify(userRepository).save(user);
@@ -123,12 +134,12 @@ class UserServiceTest {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(tokenRepository.findByUser(testUser)).thenReturn(Optional.empty());
 
-        doNothing().when(userService).sendPasswordResetEmail(eq(testUser), anyString());
+        doNothing().when(authService).sendPasswordResetEmail(eq(testUser), anyString());
 
-        userService.resetPasswordRequest("test@example.com");
+        authService.resetPasswordRequest("test@example.com");
 
         verify(tokenRepository).save(any(PasswordResetToken.class));
-        verify(userService).sendPasswordResetEmail(eq(testUser), anyString());
+        verify(authService).sendPasswordResetEmail(eq(testUser), anyString());
 
     }
 

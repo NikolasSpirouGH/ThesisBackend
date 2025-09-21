@@ -19,5 +19,5 @@ public class ResetPasswordRequest {
             regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[\\W_]).+$",
             message = "New password must contain uppercase, lowercase, digit and special character"
     )
-    private String password;
+    private String newPassword;
 }

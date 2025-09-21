@@ -1,6 +1,10 @@
 server:
   port: 8080
 
+app:
+  frontend:
+    reset-password-url: http://localhost:5173/#/reset-password
+
 spring:
   config:
     import: optional:file:.local.env[.properties]
