@@ -144,20 +144,15 @@ public class TrainingHelper {
             if (baseConf == null)
                 return error("❌ Base training has no DatasetConfiguration.");
 
-            // Αν δεν δίνονται overrides, ΧΡΗΣΙΜΟΠΟΙΗΣΕ ΤΟ ΙΔΙΟ conf (χωρίς νέο save, αποφεύγεις duplicate)
-            if (!hasBasicCols && !hasTargetCol) {
-                datasetConf = baseConf;
-            } else {
-                // Αν υπάρχουν overrides, κλωνοποίησε για να μην αλλοιώσεις το παλιό
-                datasetConf = new DatasetConfiguration();
-                datasetConf.setDataset(baseConf.getDataset());
-                datasetConf.setBasicAttributesColumns(
-                        hasBasicCols ? request.getBasicCharacteristicsColumns() : baseConf.getBasicAttributesColumns());
-                datasetConf.setTargetColumn(
-                        hasTargetCol ? request.getTargetClassColumn() : baseConf.getTargetColumn());
-                datasetConf.setUploadDate(ZonedDateTime.now());
-                datasetConf = datasetConfigurationRepository.save(datasetConf);
-            }
+            datasetConf = new DatasetConfiguration();
+            datasetConf.setDataset(baseConf.getDataset());
+            datasetConf.setBasicAttributesColumns(
+                    hasBasicCols ? request.getBasicCharacteristicsColumns() : baseConf.getBasicAttributesColumns());
+            datasetConf.setTargetColumn(
+                    hasTargetCol ? request.getTargetClassColumn() : baseConf.getTargetColumn());
+            datasetConf.setUploadDate(ZonedDateTime.now());
+            datasetConf.setStatus(baseConf.getStatus());
+            datasetConf = datasetConfigurationRepository.save(datasetConf);
 
             datasetInstances = datasetService.loadTrainingInstances(datasetConf); // ✅
 
@@ -188,21 +183,16 @@ public class TrainingHelper {
             algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
 
         } else if (retrainMode) {
-            // ✅ Χρησιμοποίησε ΤΟ ΙΔΙΟ algorithm configuration από το base training (με προαιρετικά overrides)
+            // ✅ Χρησιμοποίησε copy του configuration από το base training (με προαιρετικά overrides)
             AlgorithmConfiguration baseAlgConf = retrainedFrom.getAlgorithmConfiguration();
             if (baseAlgConf == null)
                 return error("❌ Base training has no AlgorithmConfiguration.");
 
-            if (!hasAlgorithmOpts) {
-                // Χρησιμοποίησε το ίδιο config (καθόλου νέο save -> αποφεύγεις duplicates)
-                algorithmConf = baseAlgConf;
-            } else {
-                // Αν έστειλε νέα options, κλωνοποίησε/δημιούργησε νέο για να κρατήσεις το παλιό αναλλοίωτο
-                algorithmConf = new AlgorithmConfiguration(baseAlgConf.getAlgorithm());
-                algorithmConf.setUser(user);
-                algorithmConf.setOptions(request.getOptions());
-                algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
-            }
+            algorithmConf = new AlgorithmConfiguration(baseAlgConf.getAlgorithm());
+            algorithmConf.setAlgorithmType(baseAlgConf.getAlgorithmType());
+            algorithmConf.setUser(user);
+            algorithmConf.setOptions(hasAlgorithmOpts ? request.getOptions() : baseAlgConf.getOptions());
+            algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
         } else {
             return error("❌ Algorithm information is required (algorithmId or algorithmConfigurationId).");
         }
