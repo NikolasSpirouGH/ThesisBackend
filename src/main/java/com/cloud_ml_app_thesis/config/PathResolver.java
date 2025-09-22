@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -18,11 +20,25 @@ public class PathResolver {
     private boolean runningInDocker;
 
     public Path getSharedPathRoot() {
-        if (runningInDocker) {
-            return Paths.get(sharedVolume).toAbsolutePath();
-        } else {
-            return Paths.get("shared").toAbsolutePath();
+        Path configured = (sharedVolume != null && !sharedVolume.isBlank())
+                ? Paths.get(sharedVolume)
+                : Paths.get("shared");
+
+        Path resolved = configured.isAbsolute()
+                ? configured
+                : configured.toAbsolutePath();
+
+        if (runningInDocker && !resolved.isAbsolute()) {
+            resolved = resolved.toAbsolutePath();
         }
+
+        try {
+            Files.createDirectories(resolved);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to create shared directory at " + resolved, e);
+        }
+
+        return resolved;
     }
 
     public Path getTmpDir() {

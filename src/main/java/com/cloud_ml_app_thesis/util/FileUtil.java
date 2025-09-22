@@ -40,25 +40,19 @@ public class FileUtil {
     }
 
     public static Path getSharedPathRoot() {
-        String runningInDocker = System.getenv("RUNNING_IN_DOCKER");
-
-        if ("true".equalsIgnoreCase(runningInDocker)) {
-            String hostShared = System.getenv("SHARED_VOLUME");
-            if (hostShared == null || hostShared.isBlank()) {
-                throw new IllegalStateException("SHARED_VOLUME is not set in Docker container");
-            }
-            return Paths.get(hostShared).toAbsolutePath();
-        } else {
-            // Αν έχει οριστεί TMPDIR στο .env ή system, χρησιμοποιείται αυτό
-            String customTmp = System.getenv("TMPDIR");
-            if (customTmp != null && !customTmp.isBlank()) {
-                return Paths.get(customTmp).toAbsolutePath();
-            }
-
-            // Αλλιώς χρησιμοποιούμε το default java tmpdir
-            String systemTmp = System.getProperty("java.io.tmpdir");
-            return Paths.get(systemTmp).toAbsolutePath();
+        String sharedOverride = System.getenv("SHARED_VOLUME");
+        if (sharedOverride != null && !sharedOverride.isBlank()) {
+            Path configured = Paths.get(sharedOverride);
+            return configured.isAbsolute() ? configured : configured.toAbsolutePath();
         }
+
+        String customTmp = System.getenv("TMPDIR");
+        if (customTmp != null && !customTmp.isBlank()) {
+            return Paths.get(customTmp).toAbsolutePath();
+        }
+
+        String systemTmp = System.getProperty("java.io.tmpdir");
+        return Paths.get(systemTmp).toAbsolutePath();
     }
 
     public static Map<String, Object> loadUserParamsFromMinio(MinioService minioService, String key, String bucket) {

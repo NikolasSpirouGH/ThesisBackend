@@ -22,6 +22,8 @@ import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.train.CustomTrainRequest;
 import com.cloud_ml_app_thesis.dto.request.train.TrainingStartRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
+import com.cloud_ml_app_thesis.dto.train.RetrainOptionsDTO;
+import com.cloud_ml_app_thesis.dto.train.RetrainTrainingDetailsDTO;
 import com.cloud_ml_app_thesis.dto.train.TrainingDTO;
 import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.service.ModelService;
@@ -158,6 +160,30 @@ public class TrainingController {
         List<TrainingDTO> trainings = trainService.findTrainingsForUser(
                 accountDetails.getUser(), fromDate, algorithmId, type);
         return ResponseEntity.ok(trainings);
+    }
+
+    @GetMapping("/retrain/options")
+    public ResponseEntity<RetrainOptionsDTO> getRetrainOptions(@AuthenticationPrincipal AccountDetails accountDetails) {
+        var user = accountDetails.getUser();
+        var trainings = trainService.getRetrainTrainingOptions(user);
+        var models = trainService.getRetrainModelOptions(user);
+        return ResponseEntity.ok(new RetrainOptionsDTO(trainings, models));
+    }
+
+    @GetMapping("/retrain/trainings/{trainingId}")
+    public ResponseEntity<RetrainTrainingDetailsDTO> getRetrainTrainingDetails(
+            @PathVariable Integer trainingId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        var details = trainService.getRetrainTrainingDetails(trainingId, accountDetails.getUser());
+        return ResponseEntity.ok(details);
+    }
+
+    @GetMapping("/retrain/models/{modelId}")
+    public ResponseEntity<RetrainTrainingDetailsDTO> getRetrainModelDetails(
+            @PathVariable Integer modelId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        var details = trainService.getRetrainModelDetails(modelId, accountDetails.getUser());
+        return ResponseEntity.ok(details);
     }
 
     @Operation(summary = "Delete train")

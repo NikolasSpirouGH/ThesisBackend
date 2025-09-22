@@ -2,6 +2,7 @@ package com.cloud_ml_app_thesis.repository.model;
 
 import com.cloud_ml_app_thesis.entity.Category;
 import com.cloud_ml_app_thesis.entity.Training;
+import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -36,4 +37,6 @@ public interface ModelRepository extends JpaRepository<Model, Integer> {
             List<Model> findByKeywords(@Param("keywords") Set<String> keywords);
 
     Optional<Model> findByTraining(Training training);
+
+    List<Model> findAllByTraining_User(User user);
 }

@@ -5,6 +5,7 @@
 ],
   "editor.codeActionsOnSave": {
     "source.organizeImports": "always"
-  }
+  },
+  "java.configuration.updateBuildConfiguration": "interactive"
 
 }

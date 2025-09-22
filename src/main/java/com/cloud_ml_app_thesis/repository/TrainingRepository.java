@@ -30,6 +30,21 @@ public interface TrainingRepository extends JpaRepository<Training, Integer> {
     List<Training> findAllByUser(User user);
 
     @Query("""
+            SELECT training FROM Training training
+            WHERE training.user = :user
+              AND training.status.name = com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum.COMPLETED
+            ORDER BY training.startedDate DESC
+            """)
+    List<Training> findCompletedTrainingsForUser(@Param("user") User user);
+
+    @Query("""
+            SELECT training FROM Training training
+            WHERE training.status.name = com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum.COMPLETED
+            ORDER BY training.startedDate DESC
+            """)
+    List<Training> findCompletedTrainings();
+
+    @Query("""
     SELECT training FROM Training training
     WHERE training.user = :user AND training.startedDate >= :fromDate
     ORDER BY training.startedDate DESC
@@ -107,4 +122,3 @@ public interface TrainingRepository extends JpaRepository<Training, Integer> {
     boolean existsByCustomAlgorithmConfigurationIdAndIdNot(Integer cfgId, Integer id);
 
 }
-

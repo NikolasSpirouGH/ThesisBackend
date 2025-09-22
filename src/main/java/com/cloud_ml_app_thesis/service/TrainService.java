@@ -10,6 +10,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -28,10 +29,14 @@ import com.cloud_ml_app_thesis.dto.train.ClusterEvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.EvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.PredefinedTrainMetadata;
 import com.cloud_ml_app_thesis.dto.train.RegressionEvaluationResult;
+import com.cloud_ml_app_thesis.dto.train.RetrainModelOptionDTO;
+import com.cloud_ml_app_thesis.dto.train.RetrainTrainingDetailsDTO;
+import com.cloud_ml_app_thesis.dto.train.RetrainTrainingOptionDTO;
 import com.cloud_ml_app_thesis.dto.train.TrainingDTO;
 import com.cloud_ml_app_thesis.entity.AlgorithmConfiguration;
 import com.cloud_ml_app_thesis.entity.AlgorithmType;
 import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
+import com.cloud_ml_app_thesis.entity.CustomAlgorithmConfiguration;
 import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
 import com.cloud_ml_app_thesis.entity.ModelType;
 import com.cloud_ml_app_thesis.entity.Training;
@@ -41,6 +46,7 @@ import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.UserRoleEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
 import com.cloud_ml_app_thesis.exception.BadRequestException;
@@ -359,6 +365,156 @@ public class TrainService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<RetrainTrainingOptionDTO> getRetrainTrainingOptions(User user) {
+        Comparator<Training> byStartedDate = Comparator.comparing(
+                Training::getStartedDate,
+                Comparator.nullsLast(Comparator.naturalOrder()));
+
+        List<Training> trainings = trainingRepository.findCompletedTrainingsForUser(user);
+
+        return trainings.stream()
+                .sorted(byStartedDate.reversed())
+                .map(training -> new RetrainTrainingOptionDTO(
+                        training.getId(),
+                        AlgorithmUtil.resolveAlgorithmName(training),
+                        datasetName(training),
+                        training.getStatus() != null && training.getStatus().getName() != null
+                                ? training.getStatus().getName().name()
+                                : null,
+                        training.getModel() != null ? training.getModel().getId() : null
+                ))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RetrainModelOptionDTO> getRetrainModelOptions(User user) {
+        Comparator<Model> byTrainingStarted = Comparator.comparing(
+                (Model model) -> {
+                    Training training = model.getTraining();
+                    return training != null ? training.getStartedDate() : null;
+                },
+                Comparator.nullsLast(Comparator.naturalOrder())
+        ).reversed();
+
+        var models = modelRepository.findAllByTraining_User(user);
+
+        return models.stream()
+                .sorted(byTrainingStarted)
+                .map(model -> {
+                    Training training = model.getTraining();
+                    String algorithmName = training != null ? AlgorithmUtil.resolveAlgorithmName(training) : null;
+                    String datasetName = training != null ? datasetName(training) : null;
+                    String status = model.getStatus() != null && model.getStatus().getName() != null
+                            ? model.getStatus().getName().name()
+                            : null;
+                    String modelName = model.getName();
+                    if (modelName == null || modelName.isBlank()) {
+                        modelName = "Model " + model.getId();
+                    }
+                    Integer trainingId = training != null ? training.getId() : null;
+                    return new RetrainModelOptionDTO(
+                            model.getId(),
+                            modelName,
+                            trainingId,
+                            algorithmName,
+                            datasetName,
+                            status
+                    );
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public RetrainTrainingDetailsDTO getRetrainTrainingDetails(Integer trainingId, User user) {
+        Training training = trainingRepository.findById(trainingId)
+                .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+
+        ensureOwnedByUser(training, user);
+        return toRetrainDetails(training);
+    }
+
+    @Transactional(readOnly = true)
+    public RetrainTrainingDetailsDTO getRetrainModelDetails(Integer modelId, User user) {
+        Model model = modelRepository.findById(modelId)
+                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
+
+        Training training = model.getTraining();
+        if (training == null) {
+            throw new EntityNotFoundException("No training associated with model " + modelId);
+        }
+
+        ensureOwnedByUser(training, user);
+        return toRetrainDetails(training);
+    }
+
+    private void ensureOwnedByUser(Training training, User user) {
+        if (isAdmin(user)) {
+            return;
+        }
+        if (training.getUser() == null || training.getUser().getId() == null
+                || user.getId() == null || !training.getUser().getId().equals(user.getId())) {
+            throw new AuthorizationDeniedException("Not allowed");
+        }
+    }
+
+    private String datasetName(Training training) {
+        DatasetConfiguration configuration = training.getDatasetConfiguration();
+        return Optional.ofNullable(configuration)
+                .map(DatasetConfiguration::getDataset)
+                .map(Dataset::getFileName)
+                .orElse(null);
+    }
+
+    private RetrainTrainingDetailsDTO toRetrainDetails(Training training) {
+        DatasetConfiguration datasetConf = training.getDatasetConfiguration();
+        Dataset dataset = datasetConf != null ? datasetConf.getDataset() : null;
+
+        AlgorithmConfiguration algorithmConf = training.getAlgorithmConfiguration();
+        CustomAlgorithmConfiguration customAlgorithmConf = training.getCustomAlgorithmConfiguration();
+
+        Integer algorithmId = algorithmConf != null && algorithmConf.getAlgorithm() != null
+                ? algorithmConf.getAlgorithm().getId()
+                : null;
+        Integer algorithmConfigurationId = algorithmConf != null ? algorithmConf.getId() : null;
+        Integer customAlgorithmConfigurationId = customAlgorithmConf != null ? customAlgorithmConf.getId() : null;
+        String algorithmName = algorithmConf != null && algorithmConf.getAlgorithm() != null
+                ? algorithmConf.getAlgorithm().getName()
+                : customAlgorithmConf != null && customAlgorithmConf.getAlgorithm() != null
+                ? customAlgorithmConf.getAlgorithm().getName()
+                : null;
+        String algorithmOptions = algorithmConf != null ? algorithmConf.getOptions() : null;
+
+        Integer datasetId = dataset != null ? dataset.getId() : null;
+        Integer datasetConfigurationId = datasetConf != null ? datasetConf.getId() : null;
+        String basicCols = datasetConf != null ? datasetConf.getBasicAttributesColumns() : null;
+        String targetCol = datasetConf != null ? datasetConf.getTargetColumn() : null;
+        String status = training.getStatus() != null && training.getStatus().getName() != null
+                ? training.getStatus().getName().name()
+                : null;
+
+        return new RetrainTrainingDetailsDTO(
+                training.getId(),
+                training.getModel() != null ? training.getModel().getId() : null,
+                algorithmId,
+                algorithmConfigurationId,
+                customAlgorithmConfigurationId,
+                algorithmName,
+                algorithmOptions,
+                datasetId,
+                datasetConfigurationId,
+                dataset != null ? dataset.getFileName() : null,
+                basicCols,
+                targetCol,
+                status
+        );
+    }
+
+    private boolean isAdmin(User user) {
+        return user.getRoles() != null && user.getRoles().stream()
+                .anyMatch(role -> role.getName() == UserRoleEnum.ADMIN);
+    }
+
     @Transactional
     public void deleteTrain(Integer id, User currentUser) {
         Training training = trainingRepository.findById(id)
@@ -419,4 +575,3 @@ public class TrainService {
         log.info("✅ Training {} and its model were deleted", id);
     }
 }
-
