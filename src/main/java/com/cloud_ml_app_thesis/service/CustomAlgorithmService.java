@@ -49,6 +49,35 @@ public class CustomAlgorithmService {
 
     ObjectMapper mapper = new ObjectMapper();
 
+    public List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> getCustomAlgorithms(User currentUser) {
+        List<CustomAlgorithm> algorithms = customAlgorithmRepository.findByOwnerOrPublic(currentUser);
+
+        return algorithms.stream()
+            .map(algorithm -> mapToDTO(algorithm, currentUser))
+            .collect(Collectors.toList());
+    }
+
+    private com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO mapToDTO(CustomAlgorithm algorithm, User currentUser) {
+        // Get active image version
+        String version = algorithm.getImages().stream()
+            .filter(CustomAlgorithmImage::isActive)
+            .findFirst()
+            .map(CustomAlgorithmImage::getVersion)
+            .orElse("Unknown");
+
+        return com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO.builder()
+            .id(algorithm.getId())
+            .name(algorithm.getName())
+            .description(algorithm.getDescription())
+            .version(version)
+            .accessibility(algorithm.getAccessibility().getName().name())
+            .ownerUsername(algorithm.getOwner().getUsername())
+            .isOwner(algorithm.getOwner().getId().equals(currentUser.getId()))
+            .keywords(algorithm.getKeywords())
+            .createdAt(algorithm.getCreatedAt().toString())
+            .build();
+    }
+
     @Transactional
     public Integer create(CustomAlgorithmCreateRequest request, User user) {
 

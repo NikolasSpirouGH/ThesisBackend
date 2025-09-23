@@ -77,6 +77,20 @@ public class AlgorithmController {
         return ResponseEntity.ok(algorithmService.getAlgorithms());
     }
 
+    @Operation(summary = "Get custom algorithms", description = "Retrieve custom algorithms owned by the user or public algorithms from other users")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Custom algorithms retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "User not authenticated")
+    })
+    @GetMapping("/get-custom-algorithms")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO>> getCustomAlgorithms(
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> algorithms =
+            customAlgorithmService.getCustomAlgorithms(accountDetails.getUser());
+        return ResponseEntity.ok(algorithms);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteAlgorithm(@AuthenticationPrincipal UserDetails userDetails, @PathVariable @Positive Integer id) {
