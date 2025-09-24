@@ -195,10 +195,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.0.0</version>
                 <configuration>
-                    <environmentVariables>
-                        <SHARED_VOLUME>E:/ThesisApp/shared</SHARED_VOLUME>
-                        <DOCKER_HOST>tcp://localhost:2375</DOCKER_HOST>
-                    </environmentVariables>
                     <argLine>-Djava.io.tmpdir=${project.build.directory}</argLine>
                 </configuration>
             </plugin>

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
@@ -28,9 +29,9 @@ public class DockerContainerRunner {
     private final DockerClient dockerClient;
 
     public DockerContainerRunner() {
-        String dockerHost = System.getenv().getOrDefault("DOCKER_HOST", "unix:///var/run/docker.sock");
+        String effectiveHost = resolveDockerHost();
         DefaultDockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost(dockerHost)
+                .withDockerHost(effectiveHost)
                 .withDockerTlsVerify(false)
                 .build();
 
@@ -44,6 +45,34 @@ public class DockerContainerRunner {
         this.dockerClient = DockerClientBuilder.getInstance(config)
                 .withDockerHttpClient(httpClient)
                 .build();
+    }
+
+    private static String resolveDockerHost() {
+        // 1) Respect explicit env override if provided
+        String env = System.getenv("DOCKER_HOST");
+        if (env != null && !env.isBlank()) {
+            return env.trim();
+        }
+
+        // 2) If Linux/WSL and socket exists, use Unix socket
+        if (!isWindows()) {
+            if (Files.exists(Paths.get("/var/run/docker.sock"))) {
+                return "unix:///var/run/docker.sock";
+            }
+        }
+
+        // 3) On native Windows, prefer named pipe
+        if (isWindows()) {
+            return "npipe:////./pipe/docker_engine";
+        }
+
+        // 4) Fallback to Unix socket
+        return "unix:///var/run/docker.sock";
+    }
+
+    private static boolean isWindows() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        return os.contains("win");
     }
 
     public void runTrainingContainer(String imageName, Path hostDataDir, Path hostModelDir) {
