@@ -228,6 +228,27 @@ public class CustomTrainingService {
             if (!Files.exists(datasetInside)) {
                 throw new IllegalStateException("❌ dataset.csv does not exist before starting container!");
             }
+
+            // Copy standardized train.py template to data directory
+            try (InputStream trainTemplate = getClass().getResourceAsStream("/templates/train.py")) {
+                if (trainTemplate == null) {
+                    throw new IllegalStateException("❌ train.py template not found in resources");
+                }
+                Path trainPyPath = dataDir.resolve("train.py");
+                Files.copy(trainTemplate, trainPyPath, StandardCopyOption.REPLACE_EXISTING);
+                log.info("✅ Copied standardized train.py template to {}", trainPyPath);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to copy train.py template", e);
+            }
+
+            // Extract algorithm.py from the user's Docker image to /data directory
+            try {
+                dockerCommandRunner.copyFileFromImage(dockerImageTag, "/app/algorithm.py", dataDir.resolve("algorithm.py"));
+                log.info("✅ Extracted algorithm.py from Docker image to /data");
+            } catch (Exception e) {
+                log.error("❌ Failed to extract algorithm.py from Docker image: {}", e.getMessage());
+                throw new RuntimeException("Could not extract algorithm.py from user's Docker image", e);
+            }
             Thread.sleep(1000);
             log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
             log.info("✅ Copied dataset.csv");

@@ -2,8 +2,6 @@ package com.cloud_ml_app_thesis.dto.request.custom_algorithm;
 
 import com.cloud_ml_app_thesis.dto.custom_algorithm.AlgorithmParameterDTO;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
-import com.cloud_ml_app_thesis.validation.validation.ValidImageSource;
-import com.cloud_ml_app_thesis.validation.validation.ValidTarball;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -20,7 +18,6 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(name = "CustomAlgorithmCreateRequest", description = "Form for creating a custom ML algorithm. Provide either dockerTarFile OR dockerHubUrl.")
-@ValidImageSource
 public class CustomAlgorithmCreateRequest {
 
     @Schema(description = "Algorithm name", example = "MyAwesomeAlgorithm", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -46,11 +43,10 @@ public class CustomAlgorithmCreateRequest {
     @NotEmpty
     private List<@Size(max = 50) String> keywords;
 
-    @Schema(description = " JSON file defining DEFAULTS parameters for the algorithm", type = "string", format = "binary", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "JSON file defining DEFAULTS parameters for the algorithm", type = "string", format = "binary", requiredMode = Schema.RequiredMode.REQUIRED)
     private MultipartFile parametersFile;
 
-    @Schema(description = "TAR file containing Docker image of the algorithm", type = "string", format = "binary")
-    @ValidTarball
+    @Schema(description = "TAR file containing Docker image with algorithm.py", type = "string", format = "binary")
     private MultipartFile dockerTarFile;
 
     @Schema(description = "Alternative Docker Hub URL if TAR is not provided", example = "docker.io/user/image:tag")

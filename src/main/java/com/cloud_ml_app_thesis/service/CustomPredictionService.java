@@ -111,16 +111,42 @@ public class CustomPredictionService {
             // 4. Κατέβασμα μοντέλου και αντιγραφή σε /model
             String modelKey = minioService.extractMinioKey(model.getModelUrl());
             Path modelPath = minioService.downloadObjectToTempFile(modelBucket, modelKey);
-            Path modelInside = outputDir.resolve("model.pkl");
+            Path modelInside = outputDir.resolve("trained_model.pkl");
             Files.copy(modelPath, modelInside, StandardCopyOption.REPLACE_EXISTING);
             log.info("📥 Trained model copied to /model: {}", modelInside);
 
-            // 5. Εκτέλεση docker container
+            // Copy standardized predict.py template to data directory
+            try (InputStream predictTemplate = getClass().getResourceAsStream("/templates/predict.py")) {
+                if (predictTemplate == null) {
+                    throw new IllegalStateException("❌ predict.py template not found in resources");
+                }
+                Path predictPyPath = dataDir.resolve("predict.py");
+                Files.copy(predictTemplate, predictPyPath, StandardCopyOption.REPLACE_EXISTING);
+                log.info("✅ Copied standardized predict.py template to {}", predictPyPath);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to copy predict.py template", e);
+            }
+
+            // Rename prediction dataset to expected name
+            Path testDataPath = dataDir.resolve("test_data.csv");
+            Files.move(datasetInside, testDataPath, StandardCopyOption.REPLACE_EXISTING);
+            log.info("📥 Renamed prediction dataset to test_data.csv");
+
+            // 5. Extract algorithm.py from Docker image for prediction
             CustomAlgorithm algorithm = model.getTraining().getCustomAlgorithmConfiguration().getAlgorithm();
             CustomAlgorithmImage activeImage = algorithm.getImages().stream()
                     .filter(CustomAlgorithmImage::isActive)
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException("No active image found"));
+
+            // Extract algorithm.py from the user's Docker image to /data directory
+            try {
+                dockerContainerRunner.copyFileFromImage(activeImage.getName(), "/app/algorithm.py", dataDir.resolve("algorithm.py"));
+                log.info("✅ Extracted algorithm.py from Docker image for prediction");
+            } catch (Exception e) {
+                log.error("❌ Failed to extract algorithm.py for prediction: {}", e.getMessage());
+                throw new RuntimeException("Could not extract algorithm.py for prediction", e);
+            }
 
             dockerContainerRunner.runPredictionContainer(activeImage.getName(), dataDir, outputDir);
 

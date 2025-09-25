@@ -1,11 +1,16 @@
 {
-    "java.compile.nullAnalysis.mode": "disabled",
-    "java.configuration.runtimes": [
-  { "name": "JavaSE-21", "path": "/usr/lib/jvm/java-21-openjdk-amd64", "default": true }
-],
+  "python.defaultInterpreterPath": "/home/nspyrou/ThesisApp/backend/venv/bin/python",
+
+  "java.compile.nullAnalysis.mode": "disabled",
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-21",
+      "path": "/usr/lib/jvm/java-21-openjdk-amd64",
+      "default": true
+    }
+  ],
   "editor.codeActionsOnSave": {
     "source.organizeImports": "always"
   },
   "java.configuration.updateBuildConfiguration": "interactive"
-
 }

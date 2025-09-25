@@ -18,6 +18,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
@@ -75,6 +77,25 @@ public class DockerContainerRunner {
         return os.contains("win");
     }
 
+    private static String normalizePathForDocker(Path path) {
+        String pathStr = path.toAbsolutePath().toString();
+
+        // For WSL2 with Docker Desktop, convert absolute paths to avoid complex bind mount issues
+        if (pathStr.startsWith("/tmp/")) {
+            return pathStr;
+        }
+
+        // If running in Docker or path contains complex WSL mounts, use a simpler temp path
+        if (pathStr.contains("/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts") ||
+            pathStr.contains("/ThesisApp/shared/")) {
+            // Use /tmp which Docker Desktop can handle properly in WSL2
+            return pathStr.replace("/ThesisApp/shared/", "/tmp/shared/")
+                          .replaceAll("/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/[^/]+/[^/]+", "/tmp");
+        }
+
+        return pathStr;
+    }
+
     public void runTrainingContainer(String imageName, Path hostDataDir, Path hostModelDir) {
         log.info("🐳 Starting training container using image='{}'", imageName);
         log.info("📂 Mounting volumes:");
@@ -94,13 +115,14 @@ public class DockerContainerRunner {
         }
         HostConfig hostConfig = HostConfig.newHostConfig()
                 .withBinds(
-                        new Bind(hostDataDir.toAbsolutePath().toString(), dataVolume),
-                        new Bind(hostModelDir.toAbsolutePath().toString(), modelVolume)
+                        new Bind(normalizePathForDocker(hostDataDir), dataVolume),
+                        new Bind(normalizePathForDocker(hostModelDir), modelVolume)
                 );
 
         log.info("🔧 Creating container with host config...");
         CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
                 .withHostConfig(hostConfig)
+                .withCmd("python", "/data/train.py")  // Force execution of our injected template
                 .exec();
 
         String containerId = container.getId();
@@ -149,13 +171,13 @@ public class DockerContainerRunner {
         log.info("🔗 Mount /model: {}", modelDir);
 
         HostConfig hostConfig = HostConfig.newHostConfig().withBinds(
-                new Bind(dataDir.toString(), new Volume("/data")),
-                new Bind(modelDir.toString(), new Volume("/model"))
+                new Bind(normalizePathForDocker(dataDir), new Volume("/data")),
+                new Bind(normalizePathForDocker(modelDir), new Volume("/model"))
         );
 
         CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
                 .withHostConfig(hostConfig)
-                .withCmd( "predict.py")
+                .withCmd("python", "/data/predict.py")  // Force execution of our injected template
                 .exec();
 
         String containerId = container.getId();
@@ -208,8 +230,13 @@ public class DockerContainerRunner {
         log.info("🏷️ Tagged image {} as {}", imageId, dockerImageTag);
     }
 
-    public void loadDockerImageFromTar(Path tarPath, String dockerImageTag) {
+    public void loadDockerImageFromTar(Path tarPath, String expectedTag) {
         log.info("🐳 Loading Docker image from TAR: {}", tarPath);
+
+        // Get list of images before loading
+        List<Image> imagesBefore = dockerClient.listImagesCmd().exec();
+        log.info("📊 Images before loading: {}", imagesBefore.size());
+
         try (InputStream tarInput = Files.newInputStream(tarPath)) {
             dockerClient.loadImageCmd(tarInput).exec();
             log.info("✅ Docker image loaded from TAR");
@@ -217,11 +244,205 @@ public class DockerContainerRunner {
             throw new FileProcessingException("❌ Failed to load Docker TAR", e);
         }
 
+        // Get list of images after loading to find the new one
+        List<Image> imagesAfter = dockerClient.listImagesCmd().exec();
+        log.info("📊 Images after loading: {}", imagesAfter.size());
+
+        // Find the newly loaded image (or if it already existed, find it)
+        Image loadedImage = null;
+        for (Image imageAfter : imagesAfter) {
+            boolean isNew = true;
+            for (Image imageBefore : imagesBefore) {
+                if (imageBefore.getId().equals(imageAfter.getId())) {
+                    isNew = false;
+                    break;
+                }
+            }
+            if (isNew) {
+                loadedImage = imageAfter;
+                break;
+            }
+        }
+
+        // If no new image found, the TAR might have contained an image that already exists
+        if (loadedImage == null) {
+            log.warn("⚠️ No new image detected - TAR may contain existing image");
+            log.info("🔍 Searching for untagged or recently created images...");
+
+            // Debug: List all images after loading
+            for (int i = 0; i < imagesAfter.size(); i++) {
+                Image img = imagesAfter.get(i);
+                String tags = img.getRepoTags() != null ? String.join(",", img.getRepoTags()) : "null";
+                log.info("🔍 Image {}: ID={}, Tags=[{}], Created={}", i, img.getId().substring(0, 12), tags, img.getCreated());
+            }
+
+            // Try to find the most recently created image without proper tags
+            for (Image image : imagesAfter) {
+                if (image.getRepoTags() == null || image.getRepoTags().length == 0 ||
+                    (image.getRepoTags().length == 1 && "<none>:<none>".equals(image.getRepoTags()[0]))) {
+                    loadedImage = image;
+                    log.info("🔍 Using untagged image as loaded image: {}", image.getId());
+                    break;
+                }
+            }
+
+            // If still no image found, try any image from TAR (use most recent)
+            if (loadedImage == null && !imagesAfter.isEmpty()) {
+                loadedImage = imagesAfter.get(0); // Use first image as fallback
+                log.info("🔍 Using first available image as fallback: {}", loadedImage.getId());
+            }
+        }
+
+        if (loadedImage == null) {
+            log.error("❌ Available images after loading:");
+            for (Image img : imagesAfter) {
+                log.error("   • ID: {}, Tags: {}", img.getId(),
+                    img.getRepoTags() != null ? String.join(",", img.getRepoTags()) : "none");
+            }
+            throw new IllegalStateException("❌ Could not identify loaded image from TAR");
+        }
+
+        log.info("🔍 Found loaded image ID: {}", loadedImage.getId());
+
+        // Get the original tag from the loaded image
+        String originalTag = null;
+        if (loadedImage.getRepoTags() != null && loadedImage.getRepoTags().length > 0) {
+            originalTag = loadedImage.getRepoTags()[0];
+            log.info("📋 Original image tag: {}", originalTag);
+        }
+
+        // Re-tag the image with the expected tag
         try {
-            InspectImageResponse inspect = dockerClient.inspectImageCmd(dockerImageTag).exec();
-            log.info("🔎 Loaded image ID: {}", inspect.getId());
+            // Parse expected tag into repository and tag parts
+            String[] expectedParts = expectedTag.split(":", 2);
+            if (expectedParts.length != 2) {
+                throw new IllegalArgumentException("Invalid expected tag format: " + expectedTag);
+            }
+            String expectedRepo = expectedParts[0];
+            String expectedVersion = expectedParts[1];
+
+            if (originalTag != null) {
+                // Get the image ID from the original tag
+                InspectImageResponse originalInspect = dockerClient.inspectImageCmd(originalTag).exec();
+                dockerClient.tagImageCmd(originalInspect.getId(), expectedRepo, expectedVersion).exec();
+            } else {
+                // Use image ID directly
+                dockerClient.tagImageCmd(loadedImage.getId(), expectedRepo, expectedVersion).exec();
+            }
+            log.info("🏷️ Successfully re-tagged image as: {}", expectedTag);
         } catch (Exception e) {
-            log.warn("⚠️ Image not found via tag '{}': {}", dockerImageTag, e.getMessage());
+            throw new RuntimeException("❌ Failed to re-tag image: " + e.getMessage(), e);
+        }
+
+        // Verify the expected tag exists
+        try {
+            InspectImageResponse inspect = dockerClient.inspectImageCmd(expectedTag).exec();
+            log.info("✅ Verified image with expected tag - ID: {}", inspect.getId());
+        } catch (Exception e) {
+            log.error("❌ Failed to verify re-tagged image: {}", e.getMessage());
+            throw new RuntimeException("Re-tagged image verification failed", e);
+        }
+    }
+
+    /**
+     * Alternative simpler approach for loading and tagging Docker images from TAR
+     */
+    public void loadDockerImageFromTarSimple(Path tarPath, String expectedTag) {
+        log.info("🐳 Loading Docker image from TAR (simple approach): {}", tarPath);
+
+        try (InputStream tarInput = Files.newInputStream(tarPath)) {
+            // Load the TAR file
+            dockerClient.loadImageCmd(tarInput).exec();
+            log.info("✅ Docker image loaded from TAR");
+
+            // Get all images and find one with <none> tag or use the expected approach
+            List<Image> allImages = dockerClient.listImagesCmd().exec();
+
+            // Parse expected tag
+            String[] expectedParts = expectedTag.split(":", 2);
+            if (expectedParts.length != 2) {
+                throw new IllegalArgumentException("Invalid expected tag format: " + expectedTag);
+            }
+
+            // Try to find an image that looks like it came from the TAR
+            for (Image image : allImages) {
+                if (image.getRepoTags() != null && image.getRepoTags().length > 0) {
+                    String firstTag = image.getRepoTags()[0];
+                    // Skip system images
+                    if (!firstTag.startsWith("docker.io/") && !firstTag.startsWith("registry")) {
+                        try {
+                            dockerClient.tagImageCmd(image.getId(), expectedParts[0], expectedParts[1]).exec();
+                            log.info("🏷️ Successfully tagged image {} as {}", image.getId().substring(0, 12), expectedTag);
+
+                            // Verify the tag worked
+                            dockerClient.inspectImageCmd(expectedTag).exec();
+                            log.info("✅ Verified expected tag: {}", expectedTag);
+                            return;
+                        } catch (Exception e) {
+                            log.debug("Could not tag image {}: {}", image.getId(), e.getMessage());
+                        }
+                    }
+                }
+            }
+
+            throw new RuntimeException("Could not find suitable image to tag from TAR");
+        } catch (IOException e) {
+            throw new FileProcessingException("❌ Failed to load Docker TAR", e);
+        }
+    }
+
+    /**
+     * Copy a file from a Docker image to the host filesystem
+     */
+    public void copyFileFromImage(String imageName, String sourcePathInImage, Path destPathOnHost) {
+        log.info("📋 Copying file from Docker image: {} -> {}", sourcePathInImage, destPathOnHost);
+
+        // Create a temporary container from the image
+        CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
+                .withCmd("sleep", "1") // Dummy command
+                .exec();
+
+        String containerId = container.getId();
+
+        try {
+            // Copy file from container to host
+            try (InputStream fileStream = dockerClient.copyArchiveFromContainerCmd(containerId, sourcePathInImage).exec();
+                 java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+
+                // Read the tar stream
+                fileStream.transferTo(baos);
+                byte[] tarData = baos.toByteArray();
+
+                // Extract the file from tar archive
+                try (java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(tarData);
+                     org.apache.commons.compress.archivers.tar.TarArchiveInputStream tarStream =
+                         new org.apache.commons.compress.archivers.tar.TarArchiveInputStream(bais)) {
+
+                    org.apache.commons.compress.archivers.tar.TarArchiveEntry entry;
+                    while ((entry = tarStream.getNextTarEntry()) != null) {
+                        if (entry.isFile()) {
+                            // Write file content to destination
+                            Files.copy(tarStream, destPathOnHost, StandardCopyOption.REPLACE_EXISTING);
+                            log.info("✅ Successfully copied {} from image to {}", sourcePathInImage, destPathOnHost);
+                            return;
+                        }
+                    }
+                }
+
+                throw new RuntimeException("File not found in archive: " + sourcePathInImage);
+
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to copy file from image: " + e.getMessage(), e);
+            }
+
+        } finally {
+            // Clean up temporary container
+            try {
+                dockerClient.removeContainerCmd(containerId).exec();
+                log.info("🗑️ Cleaned up temporary container: {}", containerId);
+            } catch (Exception e) {
+                log.warn("⚠️ Failed to cleanup temporary container {}: {}", containerId, e.getMessage());
+            }
         }
     }
 

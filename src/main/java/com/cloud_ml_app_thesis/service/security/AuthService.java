@@ -91,9 +91,9 @@ public class AuthService {
                     return new IllegalStateException("User role not found");
                 });
 
-        UserStatus userStatus = userStatusRepository.findByName(UserStatusEnum.INACTIVE)
+        UserStatus userStatus = userStatusRepository.findByName(UserStatusEnum.ACTIVE)
                 .orElseThrow(() -> {
-                    log.error("User status INACTIVE not found in database");
+                    log.error("User status ACTIVE not found in database");
                     return new IllegalStateException("User status not found");
                 });
 

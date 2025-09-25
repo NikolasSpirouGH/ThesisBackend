@@ -65,6 +65,8 @@ public class CustomAlgorithmService {
             .map(CustomAlgorithmImage::getVersion)
             .orElse("Unknown");
 
+        boolean isOwner = algorithm.getOwner().getId().equals(currentUser.getId());
+
         return com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO.builder()
             .id(algorithm.getId())
             .name(algorithm.getName())
@@ -72,7 +74,7 @@ public class CustomAlgorithmService {
             .version(version)
             .accessibility(algorithm.getAccessibility().getName().name())
             .ownerUsername(algorithm.getOwner().getUsername())
-            .isOwner(algorithm.getOwner().getId().equals(currentUser.getId()))
+            .isOwner(isOwner)
             .keywords(algorithm.getKeywords())
             .createdAt(algorithm.getCreatedAt().toString())
             .build();
