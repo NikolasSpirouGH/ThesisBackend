@@ -15,26 +15,20 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.test.context.TestPropertySource;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-
+/**
+ * Integration test against containerized backend.
+ * Run: docker-compose up -d
+ * Then: mvn test -Dtest=BasicFullWekaFlowIT
+ */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@TestPropertySource(properties = {
-        "spring.main.allow-bean-definition-overriding=true"
-})
 public class BasicFullWekaFlowIT {
-
-    @LocalServerPort
-    int port;
 
     String jwtToken ;
     String taskId;
@@ -43,22 +37,23 @@ public class BasicFullWekaFlowIT {
 
     @BeforeEach
     void setUp() {
-        RestAssured.port = port;
-        RestAssured.baseURI = "http://localhost";
+        // Connect to containerized backend
+        RestAssured.port = Integer.parseInt(System.getProperty("test.port", "8080"));
+        RestAssured.baseURI = System.getProperty("test.host", "http://localhost");
         loginAndSetToken();
     }
 
     @Test
     @Order(1)
     void shouldTrainDataWithWekaAlgorithm() throws IOException {
-        File trainFile = new ClassPathResource("datasets/clusters.csv").getFile();
+        File trainFile = new ClassPathResource("datasets/Logistic_Regression/Logistic_Regression_-_Training__logreg_train_csv_.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
                 .contentType(ContentType.MULTIPART)
                 //.multiPart("modelId", 150)
                 .multiPart("file", trainFile)
-                .multiPart("algorithmId", 67)
+                .multiPart("algorithmId", 21)
           //      .multiPart("basicCharacteristicsColumns", "1,2,3")
           //      .multiPart("targetClassColumn", "5")
                 .when()
@@ -76,7 +71,6 @@ public class BasicFullWekaFlowIT {
         waitForTaskCompletion(taskId);
 
         modelId = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .when()
                 .get("/api/tasks/{taskId}/model-id", taskId)
@@ -106,7 +100,6 @@ public class BasicFullWekaFlowIT {
         """;
 
         Response finalizedResponse = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .contentType(ContentType.JSON)
                 .body(finalizePayload)
@@ -128,10 +121,9 @@ public class BasicFullWekaFlowIT {
     @Order(3)
     void shouldPredictModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
-        File predictionFile = new ClassPathResource("datasets/prediction_clustering.csv").getFile();
+        File predictionFile = new ClassPathResource("datasets/Logistic_Regression/Logistic_Regression_-_Prediction__logreg_predict_csv_.csv").getFile();
 
         Response predictionResponse = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .contentType(ContentType.MULTIPART)
                 .multiPart("predictionFile", predictionFile)
@@ -150,7 +142,6 @@ public class BasicFullWekaFlowIT {
         waitForTaskCompletion(predictionTaskId);
 
         executionId = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .get("/api/tasks/{taskId}/execution-id", predictionTaskId)
                 .then()
@@ -173,7 +164,6 @@ public class BasicFullWekaFlowIT {
         Assertions.assertNotNull(this.executionId, "❌ executionId is null");
 
         Response downloadResponse = given()
-                .port(port)
                 .header("Authorization", "Bearer " + jwtToken)
                 .get("/api/model-exec/{executionId}/result", this.executionId)
                 .then()
@@ -194,7 +184,6 @@ public class BasicFullWekaFlowIT {
 
         for (int i = 1; i <= maxTries; i++) {
             Response response = given()
-                    .port(port)
                     .header("Authorization", "Bearer " + jwtToken)
                     .get("/api/tasks/" + taskId)
                     .then()
@@ -209,7 +198,9 @@ public class BasicFullWekaFlowIT {
                 System.out.printf("✅ Task %s reached status: %s%n", taskId, "COMPLETED");
                 return;
             } else if ("FAILED".equalsIgnoreCase(status)) {
-                fail("❌ Task " + taskId + " failed.");
+                String errorMessage = response.jsonPath().getString("errorMessage");
+                System.err.println("❌ Task " + taskId + " failed with error: " + errorMessage);
+                fail("❌ Task " + taskId + " failed. Error: " + errorMessage);
             }
 
             try {
@@ -232,7 +223,6 @@ public class BasicFullWekaFlowIT {
            """;
 
         Response response = given()
-                .port(port)
                 .contentType(ContentType.JSON)
                 .body(loginPayload)
                 .post("/api/auth/login")

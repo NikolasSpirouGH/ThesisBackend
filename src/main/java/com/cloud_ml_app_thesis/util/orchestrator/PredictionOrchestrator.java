@@ -1,5 +1,12 @@
 package com.cloud_ml_app_thesis.util.orchestrator;
 
+import java.time.ZonedDateTime;
+import java.util.UUID;
+
+import org.hibernate.Hibernate;
+import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.stereotype.Component;
+
 import com.cloud_ml_app_thesis.dto.request.execution.ExecuteRequest;
 import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
 import com.cloud_ml_app_thesis.entity.User;
@@ -11,14 +18,11 @@ import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.service.DatasetService;
 import com.cloud_ml_app_thesis.util.AsyncManager;
+
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.authorization.AuthorizationDeniedException;
-import org.springframework.stereotype.Component;
-
-import java.time.ZonedDateTime;
-import java.util.UUID;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
@@ -32,7 +36,10 @@ public class PredictionOrchestrator {
 
     public String handlePrediction(ExecuteRequest request, User user) {
 
-        Model model = modelRepository.findById(request.getModelId()).orElseThrow(() -> new EntityNotFoundException("Model with ID " + request.getModelId() + " not found"));
+        // Use eager fetch query to load all relationships upfront without transaction
+        Model model = modelRepository.findByIdWithTrainingDetails(request.getModelId())
+                .orElseThrow(() -> new EntityNotFoundException("Model with ID " + request.getModelId() + " not found"));
+
         if (model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE) &&
                 !model.getTraining().getUser().getUsername().equals(user.getUsername())) {
             throw new AuthorizationDeniedException("You are not authorized to access this model");

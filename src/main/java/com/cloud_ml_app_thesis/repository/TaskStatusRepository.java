@@ -13,6 +13,7 @@ import java.util.Optional;
 @Repository
 public interface TaskStatusRepository extends JpaRepository<AsyncTaskStatus, String> {
     Optional<AsyncTaskStatus> findByTaskId(String taskId);
+    Optional<AsyncTaskStatus> findByTrainingId(Integer trainingId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional

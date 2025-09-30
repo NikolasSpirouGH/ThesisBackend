@@ -100,7 +100,7 @@ public class AsyncTaskStatusController {
 
     @Operation(summary = "Stop task",
             description = "User-initiated stop request for a running task")
-    @PutMapping("/stop/{taskId}")
+    @PutMapping("/{taskId}/stop")
     public ResponseEntity<GenericResponse<String>> stopTask(@PathVariable String taskId, @AuthenticationPrincipal AccountDetails accountDetails) throws InterruptedException {
         taskStatusService.stopTask(taskId, accountDetails.getUser().getUsername());
         return ResponseEntity.ok(GenericResponse.success("Training stop requested", taskId));

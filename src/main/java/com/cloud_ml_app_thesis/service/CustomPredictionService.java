@@ -19,9 +19,14 @@ import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
 import com.cloud_ml_app_thesis.util.DockerContainerRunner;
 import com.cloud_ml_app_thesis.util.FileUtil;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+import com.cloud_ml_app_thesis.exception.UserInitiatedStopException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.springframework.security.authorization.AuthorizationDeniedException;
@@ -55,22 +60,30 @@ public class CustomPredictionService {
     private final ModelService modelService;
     private final DockerContainerRunner dockerContainerRunner;
     private final TaskStatusService taskStatusService;
+    private final EntityManager entityManager;
+    private final TransactionTemplate transactionTemplate;
 
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void executeCustom(String taskId, Integer modelId, String datasetKey, User user) {
+        boolean complete = false;
+        ModelExecution execution = null;
+        Path dataDir = null;
+        Path outputDir = null;
         log.info("🎯 [SYNC] Starting prediction [taskId={}] for modelId={} by user={}", taskId, modelId, user.getUsername());
 
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Missing task record"));
 
-        ModelExecution execution = null;
-        Path dataDir = null;
-        Path outputDir = null;
+        task.setStatus(TaskStatusEnum.RUNNING);
+        taskStatusRepository.save(task);
+        entityManager.detach(task);
 
         try {
-            task.setStatus(TaskStatusEnum.RUNNING);
-            taskStatusRepository.save(task);
+            // Check for stop request before starting
+            if (taskStatusService.stopRequested(taskId)) {
+                throw new UserInitiatedStopException("User requested stop for task " + taskId);
+            }
 
             // 1. Ανάκτηση μοντέλου
             Model model = modelRepository.findById(modelId)
@@ -158,14 +171,21 @@ public class CustomPredictionService {
                     .findFirst()
                     .orElseThrow(() -> new FileProcessingException("No valid .csv or .arff output found", null));
 
+            // Check for stop request after Docker preparation
+            if (taskStatusService.stopRequested(taskId)) {
+                throw new UserInitiatedStopException("User requested stop after Docker setup for task " + taskId);
+            }
+
             // 7. Save ModelExecution
             execution = new ModelExecution();
             execution.setModel(model);
             execution.setExecutedByUser(user);
+            execution.setDataset(model.getTraining().getDatasetConfiguration().getDataset());
             execution.setExecutedAt(ZonedDateTime.now());
             execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS)
                     .orElseThrow(() -> new EntityNotFoundException("Execution status not found")));
             modelExecutionRepository.save(execution);
+            entityManager.detach(execution);
 
             // 8. Upload σε MinIO
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
@@ -177,27 +197,82 @@ public class CustomPredictionService {
             }
 
             String resultUrl = modelService.generateMinioUrl(predBucket, predKey);
-            execution.setPredictionResult(resultUrl);
-            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FINISHED)
-                    .orElseThrow(() -> new EntityNotFoundException("Execution status not found")));
-            modelExecutionRepository.save(execution);
+            complete = true;
 
-            // 9. Ολοκλήρωση task
-            task.setExecutionId(execution.getId());
-            taskStatusService.completeTask(taskId);
-            taskStatusRepository.save(task);
+            // Check for stop request after upload
+            if (taskStatusService.stopRequested(taskId)) {
+                throw new UserInitiatedStopException("User requested stop after result upload for task " + taskId);
+            }
+
+            // ⬇️ Update ModelExecution in separate transaction
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            final Integer executionId = execution.getId();
+            final String finalResultUrl = resultUrl;
+            transactionTemplate.executeWithoutResult(status -> {
+                ModelExecution exec = modelExecutionRepository.findById(executionId)
+                        .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
+                exec.setPredictionResult(finalResultUrl);
+                exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FINISHED).orElseThrow());
+                modelExecutionRepository.saveAndFlush(exec);
+            });
+
+            // ⬇️ Complete async task in separate transaction
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            final Integer finalExecutionId = execution.getId();
+            transactionTemplate.executeWithoutResult(status -> {
+                if (taskStatusService.stopRequested(taskId)) {
+                    return; // Don't complete if stopped
+                }
+                AsyncTaskStatus freshTask = taskStatusRepository.findById(taskId).orElseThrow();
+                freshTask.setStatus(TaskStatusEnum.COMPLETED);
+                freshTask.setFinishedAt(ZonedDateTime.now());
+                freshTask.setExecutionId(finalExecutionId);
+                taskStatusRepository.saveAndFlush(freshTask);
+            });
 
             log.info("✅ Prediction complete [taskId={}]. Output at: {}", taskId, resultUrl);
 
-        } catch (Exception e) {
-            log.error("❌ Prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);
-            taskStatusService.taskFailed(taskId, e.getMessage());
+        } catch (UserInitiatedStopException e) {
+            log.warn("🛑 Custom prediction manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
+
+            taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
+
+            ModelExecutionStatusEnum finalStatus = complete
+                    ? ModelExecutionStatusEnum.FINISHED
+                    : ModelExecutionStatusEnum.FAILED;
+
+            // Update execution status in separate transaction
             if (execution != null) {
-                execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED).orElse(null));
-                modelExecutionRepository.save(execution);
+                final Integer executionId = execution.getId();
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                transactionTemplate.executeWithoutResult(status -> {
+                    ModelExecution exec = modelExecutionRepository.findById(executionId)
+                            .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
+                    exec.setStatus(modelExecutionStatusRepository.findByName(finalStatus)
+                            .orElseThrow(() -> new EntityNotFoundException("ModelExecutionStatus not found")));
+                    modelExecutionRepository.saveAndFlush(exec);
+                });
             }
-            taskStatusRepository.save(task);
-            throw new RuntimeException("Prediction failed: " + e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("❌ Custom prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);
+
+            // Task -> FAILED
+            taskStatusService.taskFailed(taskId, e.getMessage());
+
+            // ModelExecution -> FAILED in separate transaction
+            if (execution != null) {
+                final Integer executionId = execution.getId();
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                transactionTemplate.executeWithoutResult(status -> {
+                    ModelExecution exec = modelExecutionRepository.findById(executionId)
+                            .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
+                    exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED)
+                            .orElseThrow(() -> new EntityNotFoundException("ModelExecutionStatus FAILED not found")));
+                    modelExecutionRepository.saveAndFlush(exec);
+                });
+            }
+
+            throw new RuntimeException("Custom prediction failed: " + e.getMessage(), e);
         } finally {
             try {
                 if (dataDir != null) FileUtils.deleteDirectory(dataDir.toFile());

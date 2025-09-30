@@ -39,4 +39,17 @@ public interface ModelRepository extends JpaRepository<Model, Integer> {
     Optional<Model> findByTraining(Training training);
 
     List<Model> findAllByTraining_User(User user);
+
+    @Query("""
+            SELECT m FROM Model m
+            JOIN FETCH m.training t
+            LEFT JOIN FETCH t.user u
+            LEFT JOIN FETCH t.datasetConfiguration dc
+            LEFT JOIN FETCH dc.dataset d
+            LEFT JOIN FETCH t.algorithmConfiguration ac
+            LEFT JOIN FETCH ac.algorithm alg
+            LEFT JOIN FETCH ac.algorithmType at
+            WHERE m.id = :modelId
+            """)
+    Optional<Model> findByIdWithTrainingDetails(@Param("modelId") Integer modelId);
 }

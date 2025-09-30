@@ -118,8 +118,6 @@ public class TaskStatusService {
             throw new EntityNotFoundException("Task not found: " + taskId);
         }
         log.info("🛑 stopTask({}) by {}", taskId, username);
-
-        Thread.sleep(3000);
     }
 
 
@@ -133,6 +131,19 @@ public class TaskStatusService {
     public void taskStoppedTraining(String taskId, Integer trainingId, Integer modelId) {
         taskStatusRepository.markTaskStopped(taskId, trainingId, modelId);
         log.info("🛑 Task {} marked as STOPPED with trainingId={}, modelId={}", taskId, trainingId, modelId);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void taskStoppedExecution(String taskId, Integer executionId) {
+        taskStatusRepository.findByTaskId(taskId).ifPresent(task -> {
+            task.setStatus(TaskStatusEnum.STOPPED);
+            task.setFinishedAt(ZonedDateTime.now());
+            if (executionId != null) {
+                task.setExecutionId(executionId);
+            }
+            taskStatusRepository.saveAndFlush(task);
+        });
+        log.info("🛑 Task {} marked as STOPPED with executionId={}", taskId, executionId);
     }
 }
 

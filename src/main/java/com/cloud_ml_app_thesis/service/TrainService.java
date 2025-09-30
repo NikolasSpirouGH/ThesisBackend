@@ -43,6 +43,7 @@ import com.cloud_ml_app_thesis.entity.Training;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.model.Model;
+import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
 import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
@@ -161,7 +162,10 @@ public class TrainService {
                 String[] optionsArray = Utils.splitOptions(fixedRawOptions);                //TODO exception ??
                 AlgorithmUtil.setClassifierOptions(cls, optionsArray);
                 Thread.sleep(5000);
-                log.info("🧪 Checking stop status after delay...");
+                log.info("🧪 Checking stop status before classification training...");
+                if (taskStatusService.stopRequested(taskId)) {
+                    throw new UserInitiatedStopException("User requested stop before classification training for task " + taskId);
+                }
                 cls.buildClassifier(trainData);
                 evaluationResult = modelService.evaluateClassifier(cls, trainData, testData);
                 results = evaluationResult.getSummary();
@@ -173,6 +177,9 @@ public class TrainService {
                 Classifier cls = AlgorithmUtil.getClassifierInstance(algorithmClassName);
                 String[] optionsArray = Utils.splitOptions(fixedRawOptions);                //TODO exception ??
                 AlgorithmUtil.setClassifierOptions(cls, optionsArray);
+                if (taskStatusService.stopRequested(taskId)) {
+                    throw new UserInitiatedStopException("User requested stop before regression training for task " + taskId);
+                }
                 cls.buildClassifier(trainData);
                 regressionEvaluationResult = modelService.evaluateRegressor(cls, trainData, testData);
                 results = regressionEvaluationResult.getSummary();
@@ -187,6 +194,9 @@ public class TrainService {
                 log.info("Options: {}", config.getOptions());
                 log.info("✅ Parsed Weka options array: {}", Arrays.toString(optionsArray));
                 AlgorithmUtil.setClustererOptions(cls, optionsArray);
+                if (taskStatusService.stopRequested(taskId)) {
+                    throw new UserInitiatedStopException("User requested stop before clustering training for task " + taskId);
+                }
                 cls.buildClusterer(data);
                 clusterEvaluationResult = modelService.evaluateClusterer(cls, data);
                 results = clusterEvaluationResult.getSummary();
@@ -270,9 +280,8 @@ public class TrainService {
 
             taskStatusService.taskStoppedTraining(taskId, training.getId(), model.getId());
 
-            TrainingStatusEnum finalStatus = complete
-                    ? TrainingStatusEnum.COMPLETED
-                    : TrainingStatusEnum.FAILED;
+            // User-initiated stop should always result in FAILED status
+            TrainingStatusEnum finalStatus = TrainingStatusEnum.FAILED;
 
             training.setStatus(trainingStatusRepository.findByName(finalStatus)
                     .orElseThrow(() -> new EntityNotFoundException("TrainingStatus completed")));
@@ -525,9 +534,41 @@ public class TrainService {
         if (!training.getUser().getUsername().equals(currentUser.getUsername())) {
             throw new AuthorizationDeniedException("Not allowed");
         }
+        // Handle running/requested trainings by stopping them first
         if (training.getStatus().getName() == TrainingStatusEnum.RUNNING
                 || training.getStatus().getName() == TrainingStatusEnum.REQUESTED) {
-            throw new BadRequestException("Cannot delete unfinished train");
+
+            log.info("🛑 Training {} is running/requested - attempting to stop before deletion", training.getId());
+
+            // Find the associated task and stop it
+            Optional<AsyncTaskStatus> taskOpt = taskStatusRepository.findByTrainingId(training.getId());
+            if (taskOpt.isPresent()) {
+                AsyncTaskStatus task = taskOpt.get();
+                try {
+                    // Request stop
+                    taskStatusService.stopTask(task.getTaskId(), currentUser.getUsername());
+
+                    // Update training status to FAILED
+                    TrainingStatus failedStatus = trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
+                            .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found"));
+                    training.setStatus(failedStatus);
+                    training.setFinishedDate(ZonedDateTime.now());
+                    trainingRepository.save(training);
+
+                    log.info("✅ Training {} stopped and marked as FAILED for deletion", training.getId());
+                } catch (Exception e) {
+                    log.warn("⚠️ Could not stop task for training {}: {}. Proceeding with force deletion.", training.getId(), e.getMessage());
+                }
+            } else {
+                log.warn("⚠️ No task found for running training {}. Marking as FAILED for deletion.", training.getId());
+
+                // Force mark as FAILED if no task found
+                TrainingStatus failedStatus = trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
+                        .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found"));
+                training.setStatus(failedStatus);
+                training.setFinishedDate(ZonedDateTime.now());
+                trainingRepository.save(training);
+            }
         }
 
         // Prepare MinIO keys if model exists

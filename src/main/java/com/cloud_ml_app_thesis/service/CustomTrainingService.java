@@ -1,44 +1,11 @@
 package com.cloud_ml_app_thesis.service;
 
-import com.cloud_ml_app_thesis.config.BucketResolver;
-import com.cloud_ml_app_thesis.config.PathResolver;
-import com.cloud_ml_app_thesis.dto.train.CustomTrainMetadata;
-import com.cloud_ml_app_thesis.entity.*;
-import com.cloud_ml_app_thesis.entity.ModelType;
-import com.cloud_ml_app_thesis.entity.model.Model;
-import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
-import com.cloud_ml_app_thesis.entity.Training;
-import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
-import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
-import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
-import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
-import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
-import com.cloud_ml_app_thesis.exception.FileProcessingException;
-import com.cloud_ml_app_thesis.exception.UserInitiatedStopException;
-import com.cloud_ml_app_thesis.repository.*;
-import com.cloud_ml_app_thesis.repository.ModelTypeRepository;
-import com.cloud_ml_app_thesis.repository.model.ModelRepository;
-import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
-import com.cloud_ml_app_thesis.util.DockerContainerRunner;
-import com.cloud_ml_app_thesis.util.FileUtil;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nimbusds.oauth2.sdk.util.StringUtils;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityNotFoundException;
-import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.io.FileUtils;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authorization.AuthorizationDeniedException;
-import org.springframework.stereotype.Service;
-
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
@@ -46,6 +13,55 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.apache.commons.io.FileUtils;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import com.cloud_ml_app_thesis.config.BucketResolver;
+import com.cloud_ml_app_thesis.config.PathResolver;
+import com.cloud_ml_app_thesis.dto.train.CustomTrainMetadata;
+import com.cloud_ml_app_thesis.entity.AlgorithmParameter;
+import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
+import com.cloud_ml_app_thesis.entity.CustomAlgorithm;
+import com.cloud_ml_app_thesis.entity.CustomAlgorithmConfiguration;
+import com.cloud_ml_app_thesis.entity.CustomAlgorithmImage;
+import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
+import com.cloud_ml_app_thesis.entity.ModelType;
+import com.cloud_ml_app_thesis.entity.Training;
+import com.cloud_ml_app_thesis.entity.User;
+import com.cloud_ml_app_thesis.entity.model.Model;
+import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
+import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
+import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
+import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
+import com.cloud_ml_app_thesis.exception.FileProcessingException;
+import com.cloud_ml_app_thesis.exception.UserInitiatedStopException;
+import com.cloud_ml_app_thesis.repository.AlgorithmConfigurationRepository;
+import com.cloud_ml_app_thesis.repository.AlgorithmImageRepository;
+import com.cloud_ml_app_thesis.repository.CustomAlgorithmConfigurationRepository;
+import com.cloud_ml_app_thesis.repository.CustomAlgorithmRepository;
+import com.cloud_ml_app_thesis.repository.DatasetConfigurationRepository;
+import com.cloud_ml_app_thesis.repository.ModelTypeRepository;
+import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
+import com.cloud_ml_app_thesis.repository.TrainingRepository;
+import com.cloud_ml_app_thesis.repository.model.ModelRepository;
+import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
+import com.cloud_ml_app_thesis.util.DockerContainerRunner;
+import com.cloud_ml_app_thesis.util.FileUtil;
+import com.nimbusds.oauth2.sdk.util.StringUtils;
+
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityNotFoundException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
@@ -70,11 +86,13 @@ public class CustomTrainingService {
     private final TaskStatusService taskStatusService;
     private final PathResolver pathResolver;
     private final EntityManager entityManager;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void trainCustom(String taskId, User user, CustomTrainMetadata metadata) {
-        Model model = null;
         boolean complete = false;
+        Model model = null;
+        Integer trainingId = null;
 
         log.info("🧠 Starting training [taskId={}] for user={}", taskId, user.getUsername());
 
@@ -83,9 +101,11 @@ public class CustomTrainingService {
 
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Async task tracking not found"));
-        task.setStatus(TaskStatusEnum.RUNNING);
-        taskStatusRepository.save(task);
-        entityManager.detach(task);
+
+        // Let TaskStatusService handle the status update to avoid optimistic locking conflicts
+        // task.setStatus(TaskStatusEnum.RUNNING);
+        // taskStatusRepository.save(task);
+        // entityManager.detach(task);
 
         Path dataDir = null;
         Path outputDir = null;
@@ -93,8 +113,29 @@ public class CustomTrainingService {
         Training training = null;
 
         try {
-            // 1. Validate access
-            CustomAlgorithm algorithm = customAlgorithmRepository.findById(metadata.algorithmId()).orElseThrow(() -> new IllegalStateException("Custom algorithm not found"));
+            // 1. Validate access - fetch algorithm with images in a separate transaction
+            CustomAlgorithm algorithm;
+            CustomAlgorithmImage activeImage;
+
+            // Fetch algorithm and active image in a read-only transaction
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            transactionTemplate.setReadOnly(true);
+            algorithm = transactionTemplate.execute(status -> {
+                CustomAlgorithm alg = customAlgorithmRepository.findById(metadata.algorithmId())
+                        .orElseThrow(() -> new IllegalStateException("Custom algorithm not found"));
+                // Force initialization of both collections
+                alg.getImages().size();
+                alg.getParameters().size();
+                return alg;
+            });
+
+            // Reset transaction template settings
+            transactionTemplate.setReadOnly(false);
+
+            activeImage = algorithm.getImages().stream()
+                    .filter(CustomAlgorithmImage::isActive)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("No active image found"));
 
             TrainingStatus running = trainingStatusRepository.findByName(TrainingStatusEnum.RUNNING)
                     .orElseThrow(() -> new IllegalStateException("TrainingStatus RUNNING not found"));
@@ -106,8 +147,10 @@ public class CustomTrainingService {
             training.setStartedDate(ZonedDateTime.now());
             training.setStatus(running);
             training.setUser(user);
-            trainingRepository.save(training);
-            log.info("⏳ Sleeping for 20 seconds before starting training (for manual stop testing)");
+            training = trainingRepository.save(training);
+            trainingId = training.getId();
+            entityManager.detach(training);
+            log.info("⏳ Sleeping for 10 seconds before starting training (for manual stop testing)");
             Thread.sleep(10000);
             if (taskStatusService.stopRequested(taskId)) {
                 throw new UserInitiatedStopException("User requested stop for task " + taskId);
@@ -135,10 +178,6 @@ public class CustomTrainingService {
                 log.warn("⚠️ Could not read preview of dataset at {}: {}", datasetPath, e.getMessage());
             }
 
-            CustomAlgorithmImage activeImage = algorithm.getImages().stream()
-                    .filter(CustomAlgorithmImage::isActive)
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException("No active image found"));
 
             String dockerImageTag;
             if (activeImage.getDockerTarKey() != null) {
@@ -262,7 +301,11 @@ public class CustomTrainingService {
             log.info("📂 Validating that dataset is visible to Docker (host path): {}", dataDir);
             log.info("🧪 Host file exists: {}", Files.exists(dataDir.resolve("dataset.csv")));
 
-            // 6. Run training container
+            // 6. Check for stop request before running training container
+            if (taskStatusService.stopRequested(taskId)) {
+                throw new UserInitiatedStopException("User requested stop before Docker training for task " + taskId);
+            }
+            // Run training container
             dockerCommandRunner.runTrainingContainer(dockerImageTag, dataDir, outputDir);
 
             log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
@@ -317,48 +360,94 @@ public class CustomTrainingService {
             }
              model = modelRepository.findByTraining(training)
                     .orElseThrow(() -> new EntityNotFoundException("Model not linked to training"));
-            // 9. Persist Training record
-            TrainingStatus completed = trainingStatusRepository.findByName(TrainingStatusEnum.COMPLETED)
-                    .orElseThrow(() -> new IllegalStateException("TrainingStatus COMPLETED not found"));
 
-            training.setCustomAlgorithmConfiguration(savedConfig);
-            training.setStatus(completed);
-            training.setFinishedDate(ZonedDateTime.now());
-            training.setResults(Files.readString(metricsFile.toPath()));
-            training.setModel(model);
-            trainingRepository.save(training);
+            // 9. Update Training record in separate transaction
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            Integer finalTrainingId = trainingId;
+            Model finalModel = model;
+            CustomAlgorithmConfiguration finalSavedConfig = savedConfig;
+            Path finalMetricsFile = metricsFile.toPath();
+            transactionTemplate.executeWithoutResult(status -> {
+                Training tr = trainingRepository.findById(finalTrainingId)
+                        .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+                tr.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.COMPLETED)
+                        .orElseThrow(() -> new EntityNotFoundException("TrainingStatus COMPLETED not found")));
+                tr.setCustomAlgorithmConfiguration(finalSavedConfig);
+                tr.setFinishedDate(ZonedDateTime.now());
+                try {
+                    tr.setResults(Files.readString(finalMetricsFile));
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to read metrics file", e);
+                }
+                tr.setModel(finalModel);
+                trainingRepository.saveAndFlush(tr);
+            });
 
-
-            // 11. Complete async task
-            AsyncTaskStatus freshTask = taskStatusRepository.findById(taskId)
-                    .orElseThrow(() -> new IllegalStateException("Task not found"));
-            if (freshTask.getStatus() != TaskStatusEnum.STOPPED) {
-                taskStatusService.completeTask(taskId);
-                freshTask.setModelId(model.getId());
-                freshTask.setTrainingId(training.getId());
-                taskStatusRepository.save(freshTask);
-            }
+            // 10. Complete async task with model and training info in separate transaction
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            Model finalModel1 = model;
+            Integer finalTrainingId1 = trainingId;
+            transactionTemplate.executeWithoutResult(status -> {
+                AsyncTaskStatus freshTask = taskStatusRepository.findById(taskId)
+                        .orElseThrow(() -> new IllegalStateException("Task not found"));
+                if (freshTask.getStatus() != TaskStatusEnum.STOPPED) {
+                    // Do everything in one operation to avoid optimistic locking conflicts
+                    freshTask.setStatus(TaskStatusEnum.COMPLETED);
+                    freshTask.setFinishedAt(ZonedDateTime.now());
+                    freshTask.setModelId(finalModel1.getId());
+                    freshTask.setTrainingId(finalTrainingId1);
+                    taskStatusRepository.saveAndFlush(freshTask);
+                    log.info("Task completed [{}] with modelId={}, trainingId={}", taskId, finalModel1.getId(), finalTrainingId1);
+                }
+            });
             log.info("✅ Training complete [taskId={}] with modelId={}", taskId, model.getId());
 
         }catch(UserInitiatedStopException e) {
             log.warn("🛑 Training manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
-            log.info("Training id: {}", training.getId());
-            log.info("ModelId: {}", model.getId());
-            taskStatusService.taskStoppedTraining(taskId, training.getId(), model.getId());
 
-            TrainingStatusEnum finalStatus = complete
-                    ? TrainingStatusEnum.COMPLETED
-                    : TrainingStatusEnum.FAILED;
+            taskStatusService.taskStoppedTraining(taskId, trainingId, model != null ? model.getId() : null);
 
-                training.setModel(model);
-                training.setStatus(trainingStatusRepository.findByName(finalStatus)
-                        .orElseThrow(() -> new EntityNotFoundException("TrainingStatus completed")));
-                training.setFinishedDate(ZonedDateTime.now());
-                trainingRepository.save(training);
+            // User-initiated stop should always result in FAILED status
+            TrainingStatusEnum finalStatus = TrainingStatusEnum.FAILED;
+
+            // Update training status in separate transaction
+            final Integer tid = trainingId;
+            final Model finalModel = model;
+            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            transactionTemplate.executeWithoutResult(status -> {
+                Training tr = trainingRepository.findById(tid)
+                        .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+                tr.setStatus(trainingStatusRepository.findByName(finalStatus)
+                        .orElseThrow(() -> new EntityNotFoundException("TrainingStatus not found")));
+                if (finalModel != null) {
+                    tr.setModel(finalModel);
+                }
+                tr.setFinishedDate(ZonedDateTime.now());
+                trainingRepository.saveAndFlush(tr);
+            });
         } catch (Exception e) {
             log.error("❌ Training failed [taskId={}]: {}", taskId, e.getMessage(), e);
+
+            // Only update Training entity, let taskStatusService handle the task
+            final Integer tid = trainingId;
+            if (tid != null) {
+                // Training -> FAILED (REQUIRES_NEW + fresh read)
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                transactionTemplate.executeWithoutResult(status -> {
+                    Training tr = trainingRepository.findById(tid)
+                            .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+                    tr.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
+                            .orElseThrow(() -> new EntityNotFoundException("TrainingStatus FAILED not found")));
+                    tr.setResults(e.getMessage());
+                    tr.setFinishedDate(ZonedDateTime.now());
+                    trainingRepository.saveAndFlush(tr);
+                });
+            }
+
+            // Task -> FAILED (this already handles trainingId attachment if needed)
             taskStatusService.taskFailed(taskId, e.getMessage());
-            throw new RuntimeException("Training failed", e);
+
+            throw new RuntimeException("Custom training failed", e);
         } finally {
             try {
                 if (dataDir != null) FileUtils.deleteDirectory(dataDir.toFile());

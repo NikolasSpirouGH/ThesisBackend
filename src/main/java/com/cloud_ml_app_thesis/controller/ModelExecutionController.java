@@ -5,8 +5,10 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.execution.ExecuteRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
+import com.cloud_ml_app_thesis.dto.response.execution.ModelExecutionDTO;
 import com.cloud_ml_app_thesis.service.ModelExecutionService;
 import com.cloud_ml_app_thesis.util.orchestrator.PredictionOrchestrator;
 
@@ -74,6 +77,30 @@ public class ModelExecutionController {
         ));
     }
 
+    @GetMapping("/list")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "List user's model executions",
+            description = "Retrieves all model executions (both Weka and Custom) for the authenticated user.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Executions retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "User not authenticated"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<GenericResponse<List<ModelExecutionDTO>>> listUserExecutions(
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+
+        log.info("📋 Listing executions for user: {}", accountDetails.getUsername());
+
+        List<ModelExecutionDTO> executions = modelExecutionService.getUserExecutions(accountDetails.getUser());
+
+        log.info("✅ Retrieved {} executions for user: {}", executions.size(), accountDetails.getUsername());
+
+        return ResponseEntity.ok(GenericResponse.success(
+                "Executions retrieved successfully",
+                executions
+        ));
+    }
+
     @GetMapping("/{executionId}/result")
     @PreAuthorize("hasRole('USER')")
     @Operation(summary = "Download prediction result file",
@@ -101,6 +128,33 @@ public class ModelExecutionController {
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .contentLength(resource.contentLength())
                 .body(resource);
+    }
+
+    @DeleteMapping("/{executionId}")
+    @PreAuthorize("hasRole('USER')")
+    @Operation(summary = "Delete model execution",
+            description = "Deletes a model execution and its associated prediction result file.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Execution deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "User not authorized to delete this execution"),
+            @ApiResponse(responseCode = "404", description = "Execution not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<GenericResponse<Void>> deleteExecution(
+            @PathVariable Integer executionId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+
+        log.info("🗑️ Delete request for model execution [executionId={}, user={}]",
+                executionId, accountDetails.getUsername());
+
+        modelExecutionService.deleteExecution(executionId, accountDetails.getUser());
+
+        log.info("✅ Execution deleted successfully [executionId={}]", executionId);
+
+        return ResponseEntity.ok(GenericResponse.success(
+                "Execution deleted successfully",
+                null
+        ));
     }
 
 }
