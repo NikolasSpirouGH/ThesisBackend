@@ -41,7 +41,7 @@ public class DatasetConfiguration {
     private DatasetConfigurationStatusEnum status;
 
     @JsonBackReference
-    @ManyToOne(cascade= CascadeType.ALL)
+    @ManyToOne
     @JoinColumn(name = "dataset_id")
     private Dataset dataset;
 

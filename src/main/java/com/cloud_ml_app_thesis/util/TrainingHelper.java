@@ -1,29 +1,39 @@
 package com.cloud_ml_app_thesis.util;
 
-import com.cloud_ml_app_thesis.entity.*;
-import com.cloud_ml_app_thesis.entity.dataset.Dataset;
+import java.time.ZonedDateTime;
+
+import org.springframework.stereotype.Component;
+import org.springframework.web.multipart.MultipartFile;
+
 import com.cloud_ml_app_thesis.dto.request.train.TrainingStartRequest;
-import com.cloud_ml_app_thesis.dto.response.*;
+import com.cloud_ml_app_thesis.dto.response.GenericResponse;
+import com.cloud_ml_app_thesis.dto.response.Metadata;
+import com.cloud_ml_app_thesis.entity.Algorithm;
+import com.cloud_ml_app_thesis.entity.AlgorithmConfiguration;
+import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
+import com.cloud_ml_app_thesis.entity.Training;
+import com.cloud_ml_app_thesis.entity.TrainingDataInput;
+import com.cloud_ml_app_thesis.entity.User;
+import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
 import com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.DatasetFunctionalTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
-import com.cloud_ml_app_thesis.repository.*;
+import com.cloud_ml_app_thesis.repository.AlgorithmConfigurationRepository;
+import com.cloud_ml_app_thesis.repository.AlgorithmRepository;
+import com.cloud_ml_app_thesis.repository.DatasetConfigurationRepository;
+import com.cloud_ml_app_thesis.repository.TrainingRepository;
 import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
 import com.cloud_ml_app_thesis.service.DatasetService;
 import com.cloud_ml_app_thesis.service.MinioService;
-import jakarta.persistence.EntityNotFoundException;
-import lombok.*;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
-import weka.core.Instances;
 
-import java.io.InputStream;
-import java.time.ZonedDateTime;
+import jakarta.persistence.EntityNotFoundException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import weka.core.Instances;
 
 @Component
 @RequiredArgsConstructor
@@ -177,10 +187,18 @@ public class TrainingHelper {
             Algorithm algorithm = algorithmRepository.findById(Integer.parseInt(request.getAlgorithmId()))
                     .orElseThrow(() -> new EntityNotFoundException("Algorithm not found."));
 
-            algorithmConf = new AlgorithmConfiguration(algorithm);
-            algorithmConf.setUser(user);
-            algorithmConf.setOptions(hasAlgorithmOpts ? request.getOptions() : algorithm.getDefaultOptions());
-            algorithmConf = algorithmConfigurationRepository.save(algorithmConf);
+            String options = hasAlgorithmOpts ? request.getOptions() : algorithm.getDefaultOptions();
+
+            // Try to find existing configuration with same algorithm and options
+            var existingConfigs = algorithmConfigurationRepository.findByAlgorithmAndOptions(algorithm, options);
+            if (!existingConfigs.isEmpty()) {
+                algorithmConf = existingConfigs.get(0);
+            } else {
+                AlgorithmConfiguration newConf = new AlgorithmConfiguration(algorithm);
+                newConf.setUser(user);
+                newConf.setOptions(options);
+                algorithmConf = algorithmConfigurationRepository.save(newConf);
+            }
 
         } else if (retrainMode) {
             // ✅ Χρησιμοποίησε copy του configuration από το base training (με προαιρετικά overrides)
