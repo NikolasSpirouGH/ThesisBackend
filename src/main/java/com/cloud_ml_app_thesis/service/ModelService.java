@@ -157,7 +157,7 @@ public class ModelService {
         log.info("✅ Model with ID={} finalized successfully", model.getId());
     }
 
-    public void saveModel(Training training, String modelUrl, String metricsUrl, ModelType modelType, User user) {
+    public void saveModel(Training training, String modelUrl, String metricsUrl, ModelType modelType) {
         ModelAccessibility accessibility = modelAccessibilityRepository
                 .findByName(ModelAccessibilityEnum.PRIVATE)
                 .orElseThrow(() -> new EntityNotFoundException("Could not find accessibility"));
@@ -365,4 +365,3 @@ public class ModelService {
 
 
 }
-

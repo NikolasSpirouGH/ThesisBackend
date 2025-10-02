@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Component
@@ -22,14 +23,14 @@ public class AsyncManager {
 
     private final CustomTrainingService customTrainingService;
     private final CustomPredictionService customPredictionService;
-        private final TrainService trainService;
+    private final TrainService trainService;
     private final ModelExecutionService modelExecutionService;
 
     @Async
-    public CompletableFuture<Void> customTrainAsync(String taskId, User user, CustomTrainMetadata metadata) {
+    public CompletableFuture<Void> customTrainAsync(String taskId, UUID userId, String username, CustomTrainMetadata metadata) {
         log.info("🔍 [ASYNC] Training started [taskId={}]", taskId);
         try {
-            customTrainingService.trainCustom(taskId, user, metadata);
+            customTrainingService.trainCustom(taskId, userId, username, metadata);
             return CompletableFuture.completedFuture(null);
 
         } catch (Exception e) {
@@ -75,4 +76,3 @@ public class AsyncManager {
         }
     }
 }
-

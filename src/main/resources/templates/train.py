@@ -13,12 +13,20 @@ from pathlib import Path
 
 def main():
     try:
+        # Use environment variables or fallback to /data and /model
+        data_dir = os.getenv('DATA_DIR', '/data')
+        model_dir = os.getenv('MODEL_DIR', '/model')
+
+        print(f"Using DATA_DIR: {data_dir}")
+        print(f"Using MODEL_DIR: {model_dir}")
+
         # Load parameters
-        with open('/data/params.json', 'r') as f:
+        params_path = os.path.join(data_dir, 'params.json')
+        with open(params_path, 'r') as f:
             params = json.load(f)
 
         # Load dataset
-        dataset_path = '/data/dataset.csv'
+        dataset_path = os.path.join(data_dir, 'dataset.csv')
         if not os.path.exists(dataset_path):
             raise FileNotFoundError(f"Dataset not found at {dataset_path}")
 
@@ -27,13 +35,21 @@ def main():
         # Split features and target
         # Assume last column is target, rest are features
         X = df.iloc[:, :-1].values
-        y = df.iloc[:, -1].values
+        y_raw = df.iloc[:, -1]
+
+        # Convert target to numeric if it's categorical (strings)
+        if y_raw.dtype == 'object' or y_raw.dtype.name == 'category':
+            # Map categorical values to numeric (0, 1, 2, ...)
+            y, label_mapping = pd.factorize(y_raw)
+            print(f"Converted categorical target: {dict(enumerate(label_mapping))}")
+        else:
+            y = y_raw.values
 
         print(f"Dataset loaded: {X.shape[0]} samples, {X.shape[1]} features")
         print(f"Parameters: {params}")
 
         # Import user's algorithm
-        sys.path.insert(0, '/data')
+        sys.path.insert(0, data_dir)
         from algorithm import Algorithm
 
         # Initialize and train the algorithm
@@ -42,8 +58,11 @@ def main():
         model.fit(X, y)
         print("Training completed!")
 
+        # Ensure model directory exists
+        os.makedirs(model_dir, exist_ok=True)
+
         # Save the trained model
-        model_path = '/model/trained_model.pkl'
+        model_path = os.path.join(model_dir, 'trained_model.pkl')
         with open(model_path, 'wb') as f:
             pickle.dump(model, f)
 
@@ -57,7 +76,8 @@ def main():
             'status': 'success'
         }
 
-        with open('/model/metadata.json', 'w') as f:
+        metadata_path = os.path.join(model_dir, 'metadata.json')
+        with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
 
         # Save metrics file (required by the system)
@@ -70,7 +90,8 @@ def main():
             'status': 'completed'
         }
 
-        with open('/model/metrics.json', 'w') as f:
+        metrics_path = os.path.join(model_dir, 'metrics.json')
+        with open(metrics_path, 'w') as f:
             json.dump(metrics, f, indent=2)
 
         print("Training completed successfully!")
@@ -78,13 +99,15 @@ def main():
     except Exception as e:
         print(f"Training failed: {str(e)}")
         # Save error metadata
+        model_dir = os.getenv('MODEL_DIR', '/model')
         error_metadata = {
             'status': 'failed',
             'error': str(e)
         }
 
-        os.makedirs('/model', exist_ok=True)
-        with open('/model/metadata.json', 'w') as f:
+        os.makedirs(model_dir, exist_ok=True)
+        error_path = os.path.join(model_dir, 'metadata.json')
+        with open(error_path, 'w') as f:
             json.dump(error_metadata, f, indent=2)
 
         sys.exit(1)

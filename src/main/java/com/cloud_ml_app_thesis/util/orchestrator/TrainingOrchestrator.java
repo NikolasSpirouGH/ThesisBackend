@@ -58,7 +58,7 @@ public class TrainingOrchestrator {
 
     public String handleCustomTrainingRequest(@Valid CustomTrainRequest request, AccountDetails accountDetails) {
         User user = accountDetails.getUser();
-        CustomAlgorithm algorithm = customAlgorithmRepository.findById(request.getAlgorithmId())
+        CustomAlgorithm algorithm = customAlgorithmRepository.findWithOwnerById(request.getAlgorithmId())
                 .orElseThrow(() -> new IllegalArgumentException("Algorithm not found"));
 
         if (!algorithm.getAccessibility().getName().equals(AlgorithmAccessibiltyEnum.PUBLIC)
@@ -111,7 +111,7 @@ public class TrainingOrchestrator {
                 paramsKey,
                 paramsBucket
         );
-        asyncManager.customTrainAsync(taskId, user, metadata);
+        asyncManager.customTrainAsync(taskId, user.getId(), username, metadata);
 
         return taskId;
     }

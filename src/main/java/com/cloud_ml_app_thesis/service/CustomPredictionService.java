@@ -85,8 +85,8 @@ public class CustomPredictionService {
                 throw new UserInitiatedStopException("User requested stop for task " + taskId);
             }
 
-            // 1. Ανάκτηση μοντέλου
-            Model model = modelRepository.findById(modelId)
+            // 1. Ανάκτηση μοντέλου με eager loading για όλες τις σχέσεις
+            Model model = modelRepository.findByIdWithTrainingDetails(modelId)
                     .orElseThrow(() -> new EntityNotFoundException("Model with ID " + modelId + " not found"));
 
             if (model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)
@@ -111,6 +111,8 @@ public class CustomPredictionService {
             Path basePath = FileUtil.getSharedPathRoot();
             dataDir = Files.createTempDirectory(basePath, "predict-ds-");
             outputDir = Files.createTempDirectory(basePath, "predict-out-");
+            setDirectoryPermissions(dataDir);
+            setDirectoryPermissions(outputDir);
 
             Files.createDirectories(dataDir);
             Files.createDirectories(outputDir);
@@ -280,6 +282,27 @@ public class CustomPredictionService {
             } catch (IOException cleanupEx) {
                 log.warn("⚠️ Failed to clean up temp directories: {}", cleanupEx.getMessage());
             }
+        }
+    }
+
+    private void setDirectoryPermissions(Path dir) {
+        try {
+            java.nio.file.attribute.PosixFileAttributeView view = java.nio.file.Files.getFileAttributeView(dir, java.nio.file.attribute.PosixFileAttributeView.class);
+            if (view != null) {
+                view.setPermissions(java.util.EnumSet.of(
+                        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
+                        java.nio.file.attribute.PosixFilePermission.GROUP_READ,
+                        java.nio.file.attribute.PosixFilePermission.GROUP_WRITE,
+                        java.nio.file.attribute.PosixFilePermission.GROUP_EXECUTE,
+                        java.nio.file.attribute.PosixFilePermission.OTHERS_READ,
+                        java.nio.file.attribute.PosixFilePermission.OTHERS_WRITE,
+                        java.nio.file.attribute.PosixFilePermission.OTHERS_EXECUTE
+                ));
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Failed to adjust permissions for {}: {}", dir, e.getMessage());
         }
     }
 

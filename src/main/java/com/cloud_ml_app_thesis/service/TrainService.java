@@ -237,7 +237,7 @@ public class TrainService {
                     .orElseThrow(() -> new EntityNotFoundException("AlgorithmType PREDEFINED not found"));
 
 
-            modelService.saveModel(training, modelUrl, metricsUrl, predefined, user);
+            modelService.saveModel(training, modelUrl, metricsUrl, predefined);
             model = modelRepository.findByTraining(training)
                     .orElseThrow(() -> new EntityNotFoundException("Model not linked to training"));
            // log.info("⏳ Sleeping for 20 seconds after starting training (for manual stop testing)");

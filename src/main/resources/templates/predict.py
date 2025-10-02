@@ -13,8 +13,15 @@ import os
 
 def main():
     try:
+        # Use environment variables or fallback defaults (same convention as train.py)
+        data_dir = os.getenv('DATA_DIR', '/data')
+        model_dir = os.getenv('MODEL_DIR', '/model')
+
+        print(f"Using DATA_DIR: {data_dir}")
+        print(f"Using MODEL_DIR: {model_dir}")
+
         # Load the trained model
-        model_path = '/model/trained_model.pkl'
+        model_path = os.path.join(model_dir, 'trained_model.pkl')
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Trained model not found at {model_path}")
 
@@ -24,14 +31,19 @@ def main():
         print("Model loaded successfully!")
 
         # Load test dataset
-        test_data_path = '/data/test_data.csv'
+        test_data_path = os.path.join(data_dir, 'test_data.csv')
         if not os.path.exists(test_data_path):
             raise FileNotFoundError(f"Test data not found at {test_data_path}")
 
         df = pd.read_csv(test_data_path)
 
         # Extract features (assume same structure as training data)
-        X_test = df.values
+        # If last column contains '?' or similar placeholders, assume it's a target column and drop it
+        if df.iloc[:, -1].astype(str).str.contains(r'^\?$', na=False).all():
+            print(f"Detected placeholder target column (last column), dropping it for prediction")
+            X_test = df.iloc[:, :-1].values
+        else:
+            X_test = df.values
         print(f"Test data loaded: {X_test.shape[0]} samples, {X_test.shape[1]} features")
 
         # Make predictions
@@ -46,12 +58,15 @@ def main():
 
         print(f"Generated {len(predictions)} predictions")
 
-        # Save predictions to CSV in /model directory (where service expects output)
+        # Ensure output directory exists
+        os.makedirs(model_dir, exist_ok=True)
+
+        # Save predictions to CSV in model directory (where service expects output)
         predictions_df = pd.DataFrame({
             'prediction': predictions
         })
 
-        output_path = '/model/predictions.csv'
+        output_path = os.path.join(model_dir, 'predictions.csv')
         predictions_df.to_csv(output_path, index=False)
 
         # Save prediction metadata
@@ -61,7 +76,8 @@ def main():
             'output_file': 'predictions.csv'
         }
 
-        with open('/model/prediction_metadata.json', 'w') as f:
+        metadata_path = os.path.join(model_dir, 'prediction_metadata.json')
+        with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
 
         print(f"Predictions saved to {output_path}")
@@ -70,14 +86,17 @@ def main():
     except Exception as e:
         print(f"Prediction failed: {str(e)}")
 
+        model_dir = os.getenv('MODEL_DIR', '/model')
+
         # Save error metadata
         error_metadata = {
             'status': 'failed',
             'error': str(e)
         }
 
-        os.makedirs('/model', exist_ok=True)
-        with open('/model/prediction_metadata.json', 'w') as f:
+        os.makedirs(model_dir, exist_ok=True)
+        error_path = os.path.join(model_dir, 'prediction_metadata.json')
+        with open(error_path, 'w') as f:
             json.dump(error_metadata, f, indent=2)
 
         sys.exit(1)

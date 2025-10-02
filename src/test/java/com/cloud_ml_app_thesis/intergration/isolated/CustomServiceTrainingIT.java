@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import java.io.File;
 import java.io.FileInputStream;
 
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockMultipartFile;
@@ -48,10 +49,11 @@ public class CustomServiceTrainingIT {
     @Autowired
     private UserRepository userRepository;
 
-    private static final Integer CUSTOM_ALGORITHM_ID = 11;
+    private static final Integer CUSTOM_ALGORITHM_ID = 14;
     private static final String TRAINING_FILE_PATH = "/app/src/test/resources/datasets/Logistic_Regression/Logistic_Regression_-_Training__logreg_train_csv_.csv";
     private static final String TEST_USERNAME = "bigspy";
 
+    @Test
     void testCustomTrainingDirectly() throws Exception {
         assertNotNull(CUSTOM_ALGORITHM_ID, "Please set CUSTOM_ALGORITHM_ID in the test class");
 
@@ -70,6 +72,10 @@ public class CustomServiceTrainingIT {
         // Get real user from database (not a detached entity)
         User testUser = userRepository.findByUsername(TEST_USERNAME)
                 .orElseThrow(() -> new RuntimeException("User not found: " + TEST_USERNAME));
+
+        // Force initialization of the User proxy to avoid LazyInitializationException
+        String username = testUser.getUsername();
+        System.out.println("Test user loaded: " + username);
 
         // Convert file to MultipartFile
         MultipartFile multipartFile = new MockMultipartFile(

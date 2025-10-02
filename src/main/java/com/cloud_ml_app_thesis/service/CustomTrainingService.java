@@ -12,6 +12,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
@@ -89,12 +90,12 @@ public class CustomTrainingService {
     private final TransactionTemplate transactionTemplate;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void trainCustom(String taskId, User user, CustomTrainMetadata metadata) {
+    public void trainCustom(String taskId, UUID userId, String username, CustomTrainMetadata metadata) {
         boolean complete = false;
         Model model = null;
         Integer trainingId = null;
 
-        log.info("🧠 Starting training [taskId={}] for user={}", taskId, user.getUsername());
+        log.info("🧠 Starting training [taskId={}] for user={}", taskId, username);
 
         System.out.println("🧪 SHARED_VOLUME from env: " + pathResolver.getSharedPathRoot());
         System.out.println("🧪 TMPDIR from env: " + pathResolver.getTmpDir());
@@ -121,7 +122,7 @@ public class CustomTrainingService {
             transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
             transactionTemplate.setReadOnly(true);
             algorithm = transactionTemplate.execute(status -> {
-                CustomAlgorithm alg = customAlgorithmRepository.findById(metadata.algorithmId())
+                CustomAlgorithm alg = customAlgorithmRepository.findWithOwnerById(metadata.algorithmId())
                         .orElseThrow(() -> new IllegalStateException("Custom algorithm not found"));
                 // Force initialization of both collections
                 alg.getImages().size();
@@ -146,7 +147,7 @@ public class CustomTrainingService {
             training.setDatasetConfiguration(datasetConfig);
             training.setStartedDate(ZonedDateTime.now());
             training.setStatus(running);
-            training.setUser(user);
+            training.setUser(entityManager.getReference(User.class, userId));
             training = trainingRepository.save(training);
             trainingId = training.getId();
             entityManager.detach(training);
@@ -156,7 +157,7 @@ public class CustomTrainingService {
                 throw new UserInitiatedStopException("User requested stop for task " + taskId);
             }
             if (!algorithm.getAccessibility().getName().equals(AlgorithmAccessibiltyEnum.PUBLIC)
-                    && !algorithm.getOwner().getUsername().equals(user.getUsername())) {
+                    && !algorithm.getOwner().getId().equals(userId)) {
                 task.setStatus(TaskStatusEnum.FAILED);
                 task.setErrorMessage("Not authorized");
                 taskStatusRepository.save(task);
@@ -188,7 +189,7 @@ public class CustomTrainingService {
                 );
                 log.info("📦 TAR image downloaded from MinIO: {}", tarPath);
 
-                dockerImageTag = user.getUsername() + "/" + algorithm.getName() + ":" + activeImage.getVersion();
+                dockerImageTag = username + "/" + algorithm.getName() + ":" + activeImage.getVersion();
                 log.info("TAR image tag: {}", dockerImageTag);
                 dockerCommandRunner.loadDockerImageFromTar(tarPath, dockerImageTag);
             } else if (StringUtils.isNotBlank(activeImage.getDockerHubUrl())) {
@@ -253,6 +254,8 @@ public class CustomTrainingService {
 
             dataDir = Files.createTempDirectory(basePath, "training-ds-");
             outputDir = Files.createTempDirectory(basePath, "training-out-");
+            setDirectoryPermissions(dataDir);
+            setDirectoryPermissions(outputDir);
             log.info("Dataset path: {}", dataDir);
             log.info("Output path: {}", outputDir);
             Files.createDirectories(dataDir);   // Δημιουργεί τον φάκελο με force αν δεν υπάρχει
@@ -292,6 +295,11 @@ public class CustomTrainingService {
             log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
             log.info("✅ Copied dataset.csv");
             log.info("📁 Training paths: /data={}, /model={}", dataDir, outputDir);
+            try (java.util.stream.Stream<Path> stream = java.nio.file.Files.list(dataDir)) {
+                stream.forEach(p -> log.info("📄 dataDir contains: {}", p));
+            } catch (IOException e) {
+                log.warn("⚠️ Could not list dataDir: {}", e.getMessage());
+            }
 
             File datasetInsideFile = dataDir.resolve("dataset.csv").toFile();
             log.info("🔍 dataset.csv exists: {}", datasetInsideFile.exists());
@@ -329,8 +337,8 @@ public class CustomTrainingService {
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
 
             // 8. Upload results to MinIO
-            String modelKey = user.getUsername() + "_" + timestamp + "_" + modelFile.getName();
-            String metricsKey = user.getUsername() + "_" + timestamp + "_" + metricsFile.getName();
+            String modelKey = username + "_" + timestamp + "_" + modelFile.getName();
+            String metricsKey = username + "_" + timestamp + "_" + metricsFile.getName();
             String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
             String metricsBucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
 
@@ -350,7 +358,7 @@ public class CustomTrainingService {
             ModelType customType = modelTypeRepository.findByName(ModelTypeEnum.CUSTOM)
                     .orElseThrow(() -> new IllegalStateException("AlgorithmType CUSTOM not found"));
 
-            modelService.saveModel(training, modelUrl, metricsUrl, customType, user);
+            modelService.saveModel(training, modelUrl, metricsUrl, customType);
 
             log.info("⏳ Sleeping for 20 seconds after training (for manual stop testing)");
             complete=true;
@@ -450,18 +458,35 @@ public class CustomTrainingService {
             throw new RuntimeException("Custom training failed", e);
         } finally {
             try {
-                if (dataDir != null) FileUtils.deleteDirectory(dataDir.toFile());
-                if (outputDir != null) FileUtils.deleteDirectory(outputDir.toFile());
+                if (System.getenv("PRESERVE_SHARED_DEBUG") == null) {
+                    if (dataDir != null) FileUtils.deleteDirectory(dataDir.toFile());
+                    if (outputDir != null) FileUtils.deleteDirectory(outputDir.toFile());
+                }
             } catch (IOException cleanupEx) {
                 log.warn("⚠️ Failed to clean up temp directories: {}", cleanupEx.getMessage());
             }
         }
     }
 
+    private void setDirectoryPermissions(Path dir) {
+        try {
+            java.nio.file.attribute.PosixFileAttributeView view = java.nio.file.Files.getFileAttributeView(dir, java.nio.file.attribute.PosixFileAttributeView.class);
+            if (view != null) {
+                view.setPermissions(java.util.EnumSet.of(
+                        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
+                        java.nio.file.attribute.PosixFilePermission.GROUP_READ,
+                        java.nio.file.attribute.PosixFilePermission.GROUP_WRITE,
+                        java.nio.file.attribute.PosixFilePermission.GROUP_EXECUTE,
+                        java.nio.file.attribute.PosixFilePermission.OTHERS_READ,
+                        java.nio.file.attribute.PosixFilePermission.OTHERS_WRITE,
+                        java.nio.file.attribute.PosixFilePermission.OTHERS_EXECUTE
+                ));
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Failed to adjust permissions for {}: {}", dir, e.getMessage());
+        }
+    }
 
 }
-
-
-
-
-

@@ -49,6 +49,8 @@ public interface ModelRepository extends JpaRepository<Model, Integer> {
             LEFT JOIN FETCH t.algorithmConfiguration ac
             LEFT JOIN FETCH ac.algorithm alg
             LEFT JOIN FETCH ac.algorithmType at
+            LEFT JOIN FETCH t.customAlgorithmConfiguration cac
+            LEFT JOIN FETCH cac.algorithm calg
             WHERE m.id = :modelId
             """)
     Optional<Model> findByIdWithTrainingDetails(@Param("modelId") Integer modelId);
