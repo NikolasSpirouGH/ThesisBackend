@@ -6,3 +6,4 @@
 *.tar
 .venv/
 venv/
+*:Zone.Identifier
