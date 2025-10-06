@@ -81,7 +81,7 @@ public class WekaServiceTrainingIT {
                 new FileInputStream(trainingFile)
         );
 
-        // Create TrainingStartRequest (same as production)
+        // Create TrainingStartRequest (same as production)\
         TrainingStartRequest request = new TrainingStartRequest();
         request.setFile(multipartFile);
         request.setAlgorithmId(String.valueOf(WEKA_ALGORITHM_ID));
