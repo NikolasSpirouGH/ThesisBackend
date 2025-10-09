@@ -1,6 +1,7 @@
 package com.cloud_ml_app_thesis.controller;
 
 import com.cloud_ml_app_thesis.config.security.AccountDetails;
+import com.cloud_ml_app_thesis.dto.model.ModelDTO;
 import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.service.ModelService;
@@ -23,6 +24,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @RestController
@@ -34,6 +37,17 @@ public class ModelController {
     private final ModelService modelService;
     private final VisualizationService visualizationService;
 
+    @Operation(summary = "Get all accessible models", description = "Returns all models owned by the user or publicly accessible")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Models retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized")
+    })
+    @GetMapping
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ModelDTO>> getAccessibleModels(@AuthenticationPrincipal AccountDetails accountDetails) {
+        List<ModelDTO> models = modelService.getAccessibleModels(accountDetails.getUser());
+        return ResponseEntity.ok(models);
+    }
 
     @GetMapping("/metrics/{modelId}")
     @Operation(summary = "Fetch metris with model")

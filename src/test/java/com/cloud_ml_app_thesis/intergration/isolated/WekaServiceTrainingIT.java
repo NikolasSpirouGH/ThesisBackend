@@ -48,8 +48,8 @@ public class WekaServiceTrainingIT {
     @Autowired
     private UserRepository userRepository;
 
-    private static final Integer WEKA_ALGORITHM_ID = 21;
-    private static final String TRAINING_FILE_PATH = "/app/src/test/resources/datasets/Logistic_Regression/Logistic_Regression_-_Training__logreg_train_csv_.csv";
+    private static final Integer WEKA_ALGORITHM_ID = 67;
+    private static final String TRAINING_FILE_PATH = "/app/src/test/resources/datasets/SimpleKmeans/Clustering_-_Prediction__clustering_predict_csv_.csv";
     private static final String TEST_USERNAME = "bigspy";
 
     @Test

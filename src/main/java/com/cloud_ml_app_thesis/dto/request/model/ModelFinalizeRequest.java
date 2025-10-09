@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.dto.request.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -21,5 +22,7 @@ public class ModelFinalizeRequest {
     @Size(max = 500)
     private String dataDescription;
     private Integer categoryId;
+
+    @JsonProperty("isPublic")
     private boolean isPublic;
 }

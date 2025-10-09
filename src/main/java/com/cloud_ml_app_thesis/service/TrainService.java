@@ -100,6 +100,7 @@ public class TrainService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void train(String taskId, User user, PredefinedTrainMetadata metadata) {
+        AlgorithmUtil.ensureWekaClasspathCompatibility();
         boolean complete = false;
         Model model = null;
         Integer trainingId = null;
@@ -369,7 +370,8 @@ public class TrainService {
                         Optional.ofNullable(training.getDatasetConfiguration())
                                 .map(DatasetConfiguration::getDataset)
                                 .map(Dataset::getFileName)
-                                .orElse("Unknown")
+                                .orElse("Unknown"),
+                        training.getModel() != null ? training.getModel().getId() : null
                 ))
                 .toList();
     }

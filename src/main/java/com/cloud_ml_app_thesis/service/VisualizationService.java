@@ -342,6 +342,7 @@ public class VisualizationService {
     }
 
     public ByteArrayResource generateClusterSizeChart(Integer modelId, User user) {
+        AlgorithmUtil.ensureWekaClasspathCompatibility();
         Model model = modelRepository.findById(modelId)
                 .orElseThrow(() -> new EntityNotFoundException("Model not found"));
 
@@ -406,6 +407,7 @@ public class VisualizationService {
     }
 
     public ByteArrayResource generateClusterScatterPlot(Integer modelId, User user) {
+        AlgorithmUtil.ensureWekaClasspathCompatibility();
         Model model = modelRepository.findById(modelId)
                 .orElseThrow(() -> new EntityNotFoundException("Model not found"));
 

@@ -8,6 +8,11 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableAsync
 public class CloudMlAppThesis {
 
+	static {
+		// Disable Weka's class discovery cache to prevent ZIP file scanning issues with Spring Boot fat JARs
+		System.setProperty("weka.core.ClassDiscovery.enableCache", "false");
+	}
+
 	public static void main(String[] args) {
 		SpringApplication.run(CloudMlAppThesis.class, args);
 	}
