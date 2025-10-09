@@ -139,6 +139,7 @@ public class ModelService {
         model.setCategory(category);
         log.info("✔️ category = {}", category.getName());
 
+        log.info("🔍 request.isPublic() = {}", request.isPublic());
         ModelAccessibilityEnum accessEnum = request.isPublic() ? ModelAccessibilityEnum.PUBLIC : ModelAccessibilityEnum.PRIVATE;
         ModelAccessibility accessibility = accessibilityRepository.findByName(accessEnum)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid accessibility: " + accessEnum));
@@ -278,26 +279,30 @@ public class ModelService {
             assignments[i] = "Instance " + i + " assigned to cluster " + clusterer.clusterInstance(data.instance(i));
         }
 
-        // 👇 Optional: remove class attribute (if present)
-        Instances dataWithoutClass = new Instances(data);
-        if (dataWithoutClass.classIndex() != -1) {
-            dataWithoutClass.setClassIndex(-1);
-            dataWithoutClass.deleteAttributeAt(data.classIndex());
-        }
-
-        PrincipalComponents pcaFilter = new PrincipalComponents();
-        pcaFilter.setMaximumAttributes(2);
-        pcaFilter.setCenterData(true);
-        pcaFilter.setVarianceCovered(1.0);
-        pcaFilter.setInputFormat(dataWithoutClass);
-
-        Instances projected = Filter.useFilter(dataWithoutClass, pcaFilter);
-
         List<Point2D> projection2D = new ArrayList<>();
-        for (int i = 0; i < projected.numInstances(); i++) {
-            double x = projected.instance(i).value(0);
-            double y = projected.instance(i).value(1);
-            projection2D.add(new Point2D.Double(x, y)); // or custom Point2D(x, y)
+        try {
+            Instances dataWithoutClass = new Instances(data);
+            if (dataWithoutClass.classIndex() != -1) {
+                dataWithoutClass.setClassIndex(-1);
+                dataWithoutClass.deleteAttributeAt(data.classIndex());
+            }
+
+            PrincipalComponents pcaFilter = new PrincipalComponents();
+            pcaFilter.setMaximumAttributes(2);
+            pcaFilter.setCenterData(true);
+            pcaFilter.setVarianceCovered(1.0);
+            pcaFilter.setInputFormat(dataWithoutClass);
+
+            Instances projected = Filter.useFilter(dataWithoutClass, pcaFilter);
+
+            for (int i = 0; i < projected.numInstances(); i++) {
+                double x = projected.instance(i).value(0);
+                double y = projected.instance(i).value(1);
+                projection2D.add(new Point2D.Double(x, y));
+            }
+        } catch (Exception projectionError) {
+            log.warn("⚠️ PCA projection failed; proceeding without 2D coordinates", projectionError);
+            projection2D.clear();
         }
 
         return new ClusterEvaluationResult(
@@ -361,6 +366,57 @@ public class ModelService {
         String key = minioService.extractMinioKey(modelUrl);
         byte[] data = minioService.downloadObjectAsBytes(bucket, key);
         return new ByteArrayResource(data);
+    }
+
+    public List<com.cloud_ml_app_thesis.dto.model.ModelDTO> getAccessibleModels(User user) {
+        List<Model> models = modelRepository.findAllAccessibleToUser(user.getId());
+        return models.stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    private com.cloud_ml_app_thesis.dto.model.ModelDTO mapToDTO(Model model) {
+        Training training = model.getTraining();
+
+        String algorithmName = null;
+        String algorithmType = null;
+        if (training.getAlgorithmConfiguration() != null) {
+            algorithmName = training.getAlgorithmConfiguration().getAlgorithm().getName();
+            algorithmType = training.getAlgorithmConfiguration().getAlgorithmType().getName().toString();
+        } else if (training.getCustomAlgorithmConfiguration() != null) {
+            algorithmName = training.getCustomAlgorithmConfiguration().getAlgorithm().getName();
+            // Custom algorithms don't have an algorithm type specified
+            algorithmType = null;
+        }
+
+        String datasetName = training.getDatasetConfiguration() != null
+            ? training.getDatasetConfiguration().getDataset().getOriginalFileName()
+            : null;
+
+        Set<String> keywords = model.getKeywords() != null
+            ? model.getKeywords().stream().map(Keyword::getName).collect(Collectors.toSet())
+            : Set.of();
+
+        return com.cloud_ml_app_thesis.dto.model.ModelDTO.builder()
+                .id(model.getId())
+                .name(model.getName())
+                .description(model.getDescription())
+                .dataDescription(model.getDataDescription())
+                .trainingId(training.getId())
+                .algorithmName(algorithmName)
+                .datasetName(datasetName)
+                .modelType(model.getModelType().getName().toString())
+                .algorithmType(algorithmType)
+                .status(model.getStatus().getName().toString())
+                .accessibility(model.getAccessibility().getName().toString())
+                .categoryName(model.getCategory() != null ? model.getCategory().getName() : null)
+                .categoryId(model.getCategory() != null ? model.getCategory().getId() : null)
+                .keywords(keywords)
+                .finishedAt(model.getFinishedAt())
+                .finalizationDate(model.getFinalizationDate())
+                .finalized(model.isFinalized())
+                .ownerUsername(training.getUser().getUsername())
+                .build();
     }
 
 

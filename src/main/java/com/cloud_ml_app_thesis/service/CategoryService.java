@@ -486,4 +486,11 @@ public class CategoryService {
             return "{}";
         }
     }
+
+    public List<CategoryDTO> getAllCategories() {
+        return categoryRepository.findAll().stream()
+                .filter(category -> !category.isDeleted())
+                .map(this::mapCategoryToDto)
+                .collect(Collectors.toList());
+    }
 }

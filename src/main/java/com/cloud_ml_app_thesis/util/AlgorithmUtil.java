@@ -18,6 +18,12 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class AlgorithmUtil {
+
+    private static final String WEKA_MAVEN_TEST_PROP = "weka.test.maventest";
+
+    static {
+        ensureWekaClasspathCompatibility();
+    }
     private static final Logger logger = LoggerFactory.getLogger(AlgorithmUtil.class);
 
     public static boolean isClassifier(String algorithmClassName) {
@@ -53,24 +59,28 @@ public class AlgorithmUtil {
     }
 
     public static Classifier getClassifierInstance(String algorithmClassName) throws Exception {
+        ensureWekaClasspathCompatibility();
         Class<?> clazz = Class.forName(algorithmClassName);
         Constructor<?> constructor = clazz.getConstructor();
         return (Classifier) constructor.newInstance();
     }
 
     public static Clusterer getClustererInstance(String algorithmClassName) throws Exception {
+        ensureWekaClasspathCompatibility();
         Class<?> clazz = Class.forName(algorithmClassName);
         Constructor<?> constructor = clazz.getConstructor();
         return (Clusterer) constructor.newInstance();
     }
 
     public static void setClassifierOptions(Classifier classifier, String[] options) throws Exception {
+        ensureWekaClasspathCompatibility();
         if (classifier instanceof OptionHandler) {
             ((OptionHandler) classifier).setOptions(options);
         }
     }
 
     public static void setClustererOptions(Clusterer clusterer, String[] options) throws Exception {
+        ensureWekaClasspathCompatibility();
         //TODO if not instanceof ? throw exception?
         if (clusterer instanceof OptionHandler) {
             ((OptionHandler) clusterer).setOptions(options);
@@ -85,6 +95,13 @@ public class AlgorithmUtil {
         return raw;
     }
 
+    public static void ensureWekaClasspathCompatibility() {
+        String currentValue = System.getProperty(WEKA_MAVEN_TEST_PROP);
+        if (!"true".equalsIgnoreCase(currentValue)) {
+            System.setProperty(WEKA_MAVEN_TEST_PROP, "true");
+        }
+    }
+
     public static String resolveAlgorithmName(Training training) {
         if (training.getCustomAlgorithmConfiguration() != null) {
             return training.getCustomAlgorithmConfiguration().getAlgorithm().getName();
@@ -94,9 +111,4 @@ public class AlgorithmUtil {
         }
         return "Unknown";
     }
-
-    }
-
-
-
-
+}

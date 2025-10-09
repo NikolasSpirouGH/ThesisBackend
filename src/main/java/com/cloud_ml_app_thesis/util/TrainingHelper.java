@@ -31,6 +31,7 @@ import com.cloud_ml_app_thesis.service.DatasetService;
 import com.cloud_ml_app_thesis.service.MinioService;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import weka.core.Instances;
@@ -57,6 +58,7 @@ public class TrainingHelper {
 
     private final TrainingStatusRepository trainingStatusRepository;
 
+    @Transactional
     public TrainingDataInput configureTrainingDataInputByTrainCase(TrainingStartRequest request, User user) throws Exception {
         log.info("🔧 Configuring training input for user: {}", user.getUsername());
 
