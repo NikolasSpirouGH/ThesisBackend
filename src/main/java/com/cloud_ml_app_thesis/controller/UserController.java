@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -33,6 +34,31 @@ public class UserController {
 
     @Autowired
     private UserService userService;
+
+    @Operation(summary = "Get all users", description = "Allows an admin to retrieve all users")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Users retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - admin access required")
+    })
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<GenericResponse<?>> getAllUsers() {
+        return ResponseEntity.ok(userService.getAllUsers());
+    }
+
+    @Operation(summary = "Get user by username", description = "Allows users to get their own info or admins to get any user's info")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "User retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    @GetMapping("/{username}")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    public ResponseEntity<GenericResponse<?>> getUserByUsername(
+            @PathVariable String username,
+            @AuthenticationPrincipal AccountDetails userDetails) {
+        return ResponseEntity.ok(userService.getUserByUsername(username, userDetails.getUser()));
+    }
 
     @Operation(summary = "Update user info", description = "Allows a user to update profile details")
     @ApiResponses({

@@ -9,6 +9,10 @@ COPY pom.xml .
 # Προεγκατάσταση εξαρτήσεων για πιο γρήγορο startup
 RUN ./mvnw dependency:go-offline
 
+# Create target directory and set permissions for non-root users
+RUN mkdir -p /app/target && \
+    chmod -R 777 /app
+
 # Εκθέτουμε τα ports
 EXPOSE 8080 5005
 

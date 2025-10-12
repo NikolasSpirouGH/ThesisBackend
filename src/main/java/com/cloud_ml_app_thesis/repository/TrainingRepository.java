@@ -20,9 +20,11 @@ import java.util.UUID;
 public interface TrainingRepository extends JpaRepository<Training, Integer> {
     Optional<Training> findByModel(Model model);
 
-    long countByDatasetConfigurationDatasetIdAndStatus(Integer datasetId, TrainingStatusEnum status);
+    @Query("SELECT COUNT(t) FROM Training t WHERE t.datasetConfiguration.dataset.id = :datasetId AND t.status.name = :status")
+    long countByDatasetConfigurationDatasetIdAndStatus(@Param("datasetId") Integer datasetId, @Param("status") TrainingStatusEnum status);
 
-    long countByDatasetConfigurationIdAndStatus(Integer datasetConfigurationId, TrainingStatusEnum status);
+    @Query("SELECT COUNT(t) FROM Training t WHERE t.datasetConfiguration.id = :datasetConfigurationId AND t.status.name = :status")
+    long countByDatasetConfigurationIdAndStatus(@Param("datasetConfigurationId") Integer datasetConfigurationId, @Param("status") TrainingStatusEnum status);
 
 
     boolean existsByCustomAlgorithmConfiguration_Algorithm_IdAndDatasetConfiguration_Id(Integer id, Integer id1);

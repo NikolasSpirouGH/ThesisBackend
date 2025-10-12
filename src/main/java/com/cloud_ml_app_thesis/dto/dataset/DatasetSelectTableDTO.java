@@ -24,4 +24,5 @@ public class DatasetSelectTableDTO {
     private String description;
     private long completeTrainingCount;
     private long failedTrainingCount;
+    private String ownerUsername;
 }

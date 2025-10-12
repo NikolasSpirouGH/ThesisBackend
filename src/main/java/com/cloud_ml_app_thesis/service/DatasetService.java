@@ -45,6 +45,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.slf4j.Logger;
@@ -215,18 +216,37 @@ public class DatasetService {
 
     //*********************************************************************************************************************
     public GenericResponse<?> getDatasets(String username) {
-        Optional<List<Dataset>> datasetsOptional = datasetRepository.findAllByUserUsername(username);
-        if (datasetsOptional.isPresent()) {
-            List<DatasetSelectTableDTO> datasetSelectTableDTOS = datasetsOptional.get().stream()
+        List<Dataset> datasets;
+
+        // If username is null (admin/manager), return all datasets
+        if (username == null) {
+            datasets = datasetRepository.findAll();
+        } else {
+            // For regular users: return their own datasets + public datasets from others
+            datasets = datasetRepository.findAccessibleDatasetsByUsername(username);
+        }
+
+        if (datasets != null && !datasets.isEmpty()) {
+            List<DatasetSelectTableDTO> datasetSelectTableDTOS = datasets.stream()
                     .map(this::convertToDTO)
                     .toList();
             return new GenericResponse<List<DatasetSelectTableDTO>>(datasetSelectTableDTOS, null, null, new Metadata());
         }
-        return new GenericResponse<String>("Could not find datasets for user '" + username + "'.", null, null, new Metadata());
+        return new GenericResponse<List<DatasetSelectTableDTO>>(List.of(), null, null, new Metadata());
     }
 
     private DatasetSelectTableDTO convertToDTO(Dataset dataset) {
         DatasetSelectTableDTO dto = objectMapper.convertValue(dataset, DatasetSelectTableDTO.class);
+
+        // Explicitly map accessibility entity's name field to DTO's status field
+        if (dataset.getAccessibility() != null) {
+            dto.setStatus(dataset.getAccessibility().getName());
+        }
+
+        // Set owner username
+        if (dataset.getUser() != null) {
+            dto.setOwnerUsername(dataset.getUser().getUsername());
+        }
 
         long completeCount = trainingRepository.countByDatasetConfigurationDatasetIdAndStatus(dataset.getId(), TrainingStatusEnum.COMPLETED);
         dto.setCompleteTrainingCount(completeCount);
@@ -328,6 +348,34 @@ public class DatasetService {
         try (InputStream in = minioService.loadObjectAsInputStream(bucket, objectName)) {
             return DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(conf, in, objectName);
         }
+    }
+
+    public ByteArrayResource downloadDataset(Integer datasetId, User user) {
+        Dataset dataset = datasetRepository.findById(datasetId)
+                .orElseThrow(() -> new EntityNotFoundException("Dataset not found"));
+
+        // Check if user has access to the dataset
+        boolean isOwner = dataset.getUser().getUsername().equals(user.getUsername());
+        boolean isPublic = dataset.getAccessibility().getName().equals(DatasetAccessibilityEnum.PUBLIC);
+
+        if (!isOwner && !isPublic) {
+            throw new AuthorizationDeniedException("You are not authorized to download this dataset");
+        }
+
+        String filePath = dataset.getFilePath();
+        String bucket = bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET);
+
+        // Handle both cases: full MinIO URL or just the key path
+        String key;
+        if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+            key = minioService.extractMinioKey(filePath);
+        } else {
+            // If it's already just the key (e.g., "datasets/file.csv"), extract the object name
+            key = filePath.contains("/") ? filePath.substring(filePath.indexOf("/") + 1) : filePath;
+        }
+
+        byte[] data = minioService.downloadObjectAsBytes(bucket, key);
+        return new ByteArrayResource(data);
     }
 }
 

@@ -81,12 +81,14 @@ public class DatasetController {
     public ResponseEntity<GenericResponse<?>> getDatasets(@AuthenticationPrincipal UserDetails userDetails) {
         String username = null;
         if(userDetails != null){
+            username = userDetails.getUsername();
             List<String> roles = userDetails.getAuthorities().stream()
                     .map(GrantedAuthority::getAuthority)
                     .toList();
 
+            // Admins and dataset managers can see all datasets
             if(roles.contains(UserRoleEnum.DATASET_MANAGER.toString()) || roles.contains(UserRoleEnum.ADMIN.toString())){
-
+                username = null; // null = return all datasets for admins
             }
         }
         GenericResponse<?> response = datasetService.getDatasets(username);
@@ -135,13 +137,23 @@ public class DatasetController {
     }
 
     @GetMapping("/download/{id}")
-    public ResponseEntity<GenericResponse<?>> downloadDataset(@PathVariable String id) {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<org.springframework.core.io.ByteArrayResource> downloadDataset(
+            @PathVariable Integer id,
+            @AuthenticationPrincipal UserDetails userDetails) {
 
-        GenericResponse<?> response = null;
-        if (response.getErrorCode() != null && !response.getErrorCode().isBlank()) {
-            return ResponseEntity.internalServerError().body(response);
-        }
-        return ResponseEntity.ok().body(response);
+        User user = userRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+        org.springframework.core.io.ByteArrayResource resource = datasetService.downloadDataset(id, user);
+
+        // Get dataset to get original filename
+        //TODO: Improve this by returning filename from the service
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=dataset_" + id + ".csv")
+                .contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+                .contentLength(resource.contentLength())
+                .body(resource);
     }
     @GetMapping("/{email}/category")
     public ResponseEntity<GenericResponse<?>> getDatasetsUrls(@PathVariable String email){
