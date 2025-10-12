@@ -1,11 +1,16 @@
 package com.cloud_ml_app_thesis.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.modelmapper.ModelMapper;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import jakarta.persistence.EntityNotFoundException;
 
 import com.cloud_ml_app_thesis.dto.request.user.UserUpdateRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
@@ -107,6 +112,53 @@ public class UserService {
         userRepository.delete(user);
     }
 
+    public GenericResponse<?> getAllUsers() {
+        List<User> users = userRepository.findAll();
+        List<UserDTO> userDTOs = users.stream()
+                .map(this::convertToUserDTO)
+                .toList();
+        return new GenericResponse<>(userDTOs, null, "Users retrieved successfully", new Metadata());
+    }
 
+    public GenericResponse<?> getUserByUsername(String username, User requestingUser) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new EntityNotFoundException("User not found with username: " + username));
+
+        // Allow users to view their own profile or admins to view any profile
+        boolean isAdmin = requestingUser.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ADMIN") || role.getName().equals("ROLE_ADMIN"));
+        boolean isSelf = requestingUser.getUsername().equals(username);
+
+        if (!isAdmin && !isSelf) {
+            throw new AuthorizationDeniedException("You are not authorized to view this user's profile");
+        }
+
+        UserDTO userDTO = convertToUserDTO(user);
+        return new GenericResponse<>(userDTO, null, "User retrieved successfully", new Metadata());
+    }
+
+    private UserDTO convertToUserDTO(User user) {
+        Set<String> roleNames = user.getRoles().stream()
+                .map(role -> role.getName().toString())
+                .collect(Collectors.toSet());
+
+        String statusString = null;
+        if (user.getStatus() != null && user.getStatus().getName() != null) {
+            statusString = user.getStatus().getName().toString();
+        }
+
+        return UserDTO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .age(user.getAge())
+                .profession(user.getProfession())
+                .country(user.getCountry())
+                .status(statusString)
+                .roles(roleNames)
+                .build();
+    }
 
 }

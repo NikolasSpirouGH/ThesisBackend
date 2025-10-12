@@ -4,6 +4,7 @@ import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.model.ModelDTO;
 import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
+import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.service.ModelService;
 import com.cloud_ml_app_thesis.service.VisualizationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -45,7 +46,13 @@ public class ModelController {
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<ModelDTO>> getAccessibleModels(@AuthenticationPrincipal AccountDetails accountDetails) {
-        List<ModelDTO> models = modelService.getAccessibleModels(accountDetails.getUser());
+        User user = accountDetails.getUser();
+        boolean isAdmin = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("ROLE_ADMIN"));
+
+        List<ModelDTO> models = isAdmin
+                ? modelService.getAllModels()
+                : modelService.getAccessibleModels(user);
         return ResponseEntity.ok(models);
     }
 

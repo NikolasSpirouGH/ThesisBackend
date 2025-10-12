@@ -375,6 +375,13 @@ public class ModelService {
                 .collect(Collectors.toList());
     }
 
+    public List<com.cloud_ml_app_thesis.dto.model.ModelDTO> getAllModels() {
+        List<Model> models = modelRepository.findAll();
+        return models.stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
     private com.cloud_ml_app_thesis.dto.model.ModelDTO mapToDTO(Model model) {
         Training training = model.getTraining();
 

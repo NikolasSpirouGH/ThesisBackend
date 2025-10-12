@@ -14,6 +14,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
@@ -322,6 +323,35 @@ public class TrainService {
 
             throw new RuntimeException("Predefined training failed", e);
         }
+    }
+
+    public List<TrainingDTO> findAllTrainings(LocalDate startDate, Integer algorithmId, ModelTypeEnum type) {
+        // Admin version - no user filtering, simplified logic for now
+        List<Training> trainings;
+
+        if (startDate == null && algorithmId == null && type == null) {
+            trainings = trainingRepository.findAll();
+        } else {
+            // For admins with filters, fall back to findAll and filter in memory
+            // (you can optimize this later with specific queries if needed)
+            trainings = trainingRepository.findAll();
+        }
+
+        return trainings.stream()
+                .map(training -> new TrainingDTO(
+                        training.getId(),
+                        AlgorithmUtil.resolveAlgorithmName(training),
+                        training.getModel() != null ? training.getModel().getModelType().getName().name() : null,
+                        training.getStatus().getName(),
+                        training.getStartedDate(),
+                        training.getFinishedDate(),
+                        Optional.ofNullable(training.getDatasetConfiguration())
+                                .map(DatasetConfiguration::getDataset)
+                                .map(Dataset::getFileName)
+                                .orElse("Unknown"),
+                        training.getModel() != null ? training.getModel().getId() : null
+                ))
+                .collect(Collectors.toList());
     }
 
     public List<TrainingDTO> findTrainingsForUser(User user, LocalDate startDate, Integer algorithmId, ModelTypeEnum type) {

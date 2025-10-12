@@ -3,6 +3,7 @@ package com.cloud_ml_app_thesis.controller;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.cloud_ml_app_thesis.entity.User;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -157,8 +158,13 @@ public class TrainingController {
             @RequestParam(required = false) @Parameter(description = "Type of algorithm", example = "CUSTOM") ModelTypeEnum type,
             @AuthenticationPrincipal AccountDetails accountDetails) {
 
-        List<TrainingDTO> trainings = trainService.findTrainingsForUser(
-                accountDetails.getUser(), fromDate, algorithmId, type);
+        User user = accountDetails.getUser();
+        boolean isAdmin = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("ROLE_ADMIN"));
+
+        List<TrainingDTO> trainings = isAdmin
+                ? trainService.findAllTrainings(fromDate, algorithmId, type)
+                : trainService.findTrainingsForUser(user, fromDate, algorithmId, type);
         return ResponseEntity.ok(trainings);
     }
 
