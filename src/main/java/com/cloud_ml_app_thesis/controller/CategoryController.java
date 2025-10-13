@@ -55,6 +55,30 @@ public class CategoryController {
         return ResponseEntity.ok(categories);
     }
 
+    @Operation(summary = "Get pending category requests (Admin only)", description = "Returns all pending category requests for admin approval")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pending requests retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin only")
+    })
+    @GetMapping("/requests/pending")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CATEGORY_MANAGER')")
+    public ResponseEntity<GenericResponse<?>> getPendingCategoryRequests() {
+        GenericResponse<?> response = categoryService.getPendingCategoryRequests();
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Get all category requests (Admin only)", description = "Returns all category requests with their status")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Requests retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin only")
+    })
+    @GetMapping("/requests/all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CATEGORY_MANAGER')")
+    public ResponseEntity<GenericResponse<?>> getAllCategoryRequests() {
+        GenericResponse<?> response = categoryService.getAllCategoryRequests();
+        return ResponseEntity.ok(response);
+    }
+
     @Operation(summary = "Delete a category", description = "Deletes a category by ID. Only accessible by ADMIN.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Category deleted successfully"),
