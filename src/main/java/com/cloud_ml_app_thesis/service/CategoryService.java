@@ -493,4 +493,28 @@ public class CategoryService {
                 .map(this::mapCategoryToDto)
                 .collect(Collectors.toList());
     }
+
+    public GenericResponse<?> getPendingCategoryRequests() {
+        log.info("Fetching pending category requests");
+        List<CategoryRequest> pendingRequests = categoryRequestRepository.findAll().stream()
+                .filter(request -> request.getStatus().getName() == CategoryRequestStatusEnum.PENDING)
+                .collect(Collectors.toList());
+
+        List<CategoryRequestDTO> dtoList = pendingRequests.stream()
+                .map(this::mapCategoryRequestToDto)
+                .collect(Collectors.toList());
+
+        log.info("Found {} pending category requests", dtoList.size());
+        return new GenericResponse<>(dtoList, null, "Pending category requests retrieved successfully", new Metadata());
+    }
+
+    public GenericResponse<?> getAllCategoryRequests() {
+        log.info("Fetching all category requests");
+        List<CategoryRequestDTO> dtoList = categoryRequestRepository.findAll().stream()
+                .map(this::mapCategoryRequestToDto)
+                .collect(Collectors.toList());
+
+        log.info("Found {} category requests", dtoList.size());
+        return new GenericResponse<>(dtoList, null, "Category requests retrieved successfully", new Metadata());
+    }
 }

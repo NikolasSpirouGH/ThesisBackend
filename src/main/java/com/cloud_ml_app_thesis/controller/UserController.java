@@ -26,38 +26,45 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 @Tag(name = "User Management", description = "Endpoints for managing users")
-
 @RestController
 @RequestMapping("/api/users")
-
 public class UserController {
 
     @Autowired
     private UserService userService;
 
-    @Operation(summary = "Get all users", description = "Allows an admin to retrieve all users")
+    @Operation(summary = "Get current user profile", description = "Returns the authenticated user's profile information")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "User profile retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized")
+    })
+    @GetMapping("/me")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    public ResponseEntity<GenericResponse<?>> getCurrentUser(@AuthenticationPrincipal AccountDetails userDetails) {
+        return ResponseEntity.ok(userService.getUserProfile(userDetails.getUser()));
+    }
+
+    @Operation(summary = "List all users (Admin only)", description = "Returns a list of all registered users")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Users retrieved successfully"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - admin access required")
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin only")
     })
-    @GetMapping
+    @GetMapping("/all")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<GenericResponse<?>> getAllUsers() {
         return ResponseEntity.ok(userService.getAllUsers());
     }
 
-    @Operation(summary = "Get user by username", description = "Allows users to get their own info or admins to get any user's info")
+    @Operation(summary = "Get user by username (Admin only)", description = "Returns detailed user information including statistics")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "User retrieved successfully"),
-            @ApiResponse(responseCode = "403", description = "Forbidden"),
-            @ApiResponse(responseCode = "404", description = "User not found")
+            @ApiResponse(responseCode = "200", description = "User details retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "User not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Admin only")
     })
-    @GetMapping("/{username}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-    public ResponseEntity<GenericResponse<?>> getUserByUsername(
-            @PathVariable String username,
-            @AuthenticationPrincipal AccountDetails userDetails) {
-        return ResponseEntity.ok(userService.getUserByUsername(username, userDetails.getUser()));
+    @GetMapping("/details/{username}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<GenericResponse<?>> getUserDetails(@PathVariable String username) {
+        return ResponseEntity.ok(userService.getUserDetails(username));
     }
 
     @Operation(summary = "Update user info", description = "Allows a user to update profile details")
@@ -83,8 +90,6 @@ public class UserController {
     public ResponseEntity<GenericResponse<?>> updateUserByAdmin(@PathVariable String username, @Valid @RequestBody UserUpdateRequest request) {
         return ResponseEntity.ok(userService.updateUserByAdmin(username, request));
     }
-
-
 
     @Operation(summary = "Delete own account", description = "Allows a user to delete their account by providing a reason")
     @ApiResponses({
