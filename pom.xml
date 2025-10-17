@@ -8,9 +8,9 @@
         <version>3.4.2</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.backend</groupId>
-    <artifactId>mlapp</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <groupId>gr.aegean.icsd.cloudmlapp</groupId>
+    <artifactId>backend-app</artifactId>
+    <version>1.0.0</version>
     <name>CloudAppMLProject</name>
     <description>CloudAppMLProject</description>
     <properties>

@@ -1,0 +1,16 @@
+ [
+    {
+      "name": "learning_rate",
+      "type": "DOUBLE",
+      "description": "Learning rate for gradient descent",
+      "value": "0.01",
+      "range": "0.001-1.0"
+    },
+    {
+      "name": "n_epochs",
+      "type": "INTEGER",
+      "description": "Number of training epochs",
+      "value": "1000",
+      "range": "10-5000"
+    }
+  ]
