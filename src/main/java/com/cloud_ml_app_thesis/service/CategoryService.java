@@ -154,7 +154,7 @@ public class CategoryService {
         Category category = new Category();
         category.setName(request.getName());
         category.setDescription(request.getDescription());
-        category.setCreatedBy(user);
+        category.setCreatedBy(request.getRequestedBy());  // Use original requester, not the admin who approved
         category.setParentCategories(copiedParentCategories);
 
         // Save Category

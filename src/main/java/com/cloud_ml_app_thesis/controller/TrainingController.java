@@ -2,6 +2,7 @@ package com.cloud_ml_app_thesis.controller;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import com.cloud_ml_app_thesis.entity.User;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -203,6 +204,31 @@ public class TrainingController {
         trainService.deleteTrain(id, accountDetails.getUser());
         return ResponseEntity.accepted().body(GenericResponse.success(
                 "Training deleted", " :" + id
+        ));
+    }
+
+    @GetMapping("/used-algorithms")
+    @Operation(summary = "Get algorithms used by the user", description = "Returns algorithms that the user has actually used in their trainings")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Algorithms retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized")
+    })
+    public ResponseEntity<Map<String, List<?>>> getUsedAlgorithms(@AuthenticationPrincipal AccountDetails accountDetails) {
+        User user = accountDetails.getUser();
+
+        var predefined = trainService.getUserUsedPredefinedAlgorithms(user)
+                .stream()
+                .map(alg -> Map.of("id", alg.getId(), "name", alg.getName()))
+                .toList();
+
+        var custom = trainService.getUserUsedCustomAlgorithms(user)
+                .stream()
+                .map(alg -> Map.of("id", alg.getId(), "name", alg.getName()))
+                .toList();
+
+        return ResponseEntity.ok(Map.of(
+                "predefined", predefined,
+                "custom", custom
         ));
     }
 }
