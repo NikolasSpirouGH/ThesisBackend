@@ -90,18 +90,13 @@ public class DataInitializer implements CommandLineRunner {
 
     private void initializeCategoriesStatuses() {
         Arrays.stream(CategoryRequestStatusEnum.values()).forEach(statusEnum -> {
-            CategoryRequestStatus status = categoryRequestStatusRepository.findByName(statusEnum)
+            categoryRequestStatusRepository.findByName(statusEnum)
                     .orElseGet(() -> {
                         CategoryRequestStatus newStatus = new CategoryRequestStatus();
                         newStatus.setName(statusEnum);
                         newStatus.setDescription(getDescriptionForCategoryStatus(statusEnum));
-                        return newStatus;
+                        return categoryRequestStatusRepository.save(newStatus);
                     });
-
-            if(status.getDescription() == null || status.getDescription().isBlank()) {
-                status.setDescription(getDescriptionForCategoryStatus(statusEnum));
-                categoryRequestStatusRepository.save(status);
-            }
         });
     }
 

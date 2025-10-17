@@ -326,18 +326,58 @@ public class TrainService {
     }
 
     public List<TrainingDTO> findAllTrainings(LocalDate startDate, Integer algorithmId, ModelTypeEnum type) {
-        // Admin version - no user filtering, simplified logic for now
-        List<Training> trainings;
+        // Admin version - returns all trainings with optional filtering
+        List<Training> trainings = trainingRepository.findAll();
 
-        if (startDate == null && algorithmId == null && type == null) {
-            trainings = trainingRepository.findAll();
-        } else {
-            // For admins with filters, fall back to findAll and filter in memory
-            // (you can optimize this later with specific queries if needed)
-            trainings = trainingRepository.findAll();
-        }
+        ZonedDateTime from = startDate != null
+                ? startDate.atStartOfDay(ZoneId.of("UTC"))
+                : null;
 
+        log.info("🔍 [ADMIN] Searching ALL trainings, fromDate={}, from={}, algorithmId={}, type={}",
+                 startDate, from, algorithmId, type);
+
+        // Apply filters in-memory
         return trainings.stream()
+                .filter(training -> {
+                    // Filter by date if provided
+                    if (from != null && training.getStartedDate() != null) {
+                        if (training.getStartedDate().isBefore(from)) {
+                            return false;
+                        }
+                    }
+
+                    // Filter by algorithmId and type if provided
+                    if (algorithmId != null && type != null) {
+                        if (type == ModelTypeEnum.CUSTOM) {
+                            CustomAlgorithmConfiguration customConfig = training.getCustomAlgorithmConfiguration();
+                            if (customConfig == null || customConfig.getAlgorithm() == null
+                                || !customConfig.getAlgorithm().getId().equals(algorithmId)) {
+                                return false;
+                            }
+                        } else if (type == ModelTypeEnum.PREDEFINED) {
+                            AlgorithmConfiguration config = training.getAlgorithmConfiguration();
+                            if (config == null || config.getAlgorithm() == null
+                                || !config.getAlgorithm().getId().equals(algorithmId)) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    // Filter by type only if provided (without algorithmId)
+                    if (algorithmId == null && type != null) {
+                        if (type == ModelTypeEnum.CUSTOM) {
+                            if (training.getCustomAlgorithmConfiguration() == null) {
+                                return false;
+                            }
+                        } else if (type == ModelTypeEnum.PREDEFINED) {
+                            if (training.getAlgorithmConfiguration() == null) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    return true;
+                })
                 .map(training -> new TrainingDTO(
                         training.getId(),
                         AlgorithmUtil.resolveAlgorithmName(training),
@@ -358,8 +398,11 @@ public class TrainService {
         List<Training> trainings;
 
         ZonedDateTime from = startDate != null
-                ? startDate.atStartOfDay(ZoneId.of("Europe/Athens"))
+                ? startDate.atStartOfDay(ZoneId.of("UTC"))
                 : null;
+
+        log.info("🔍 Searching trainings for user={}, fromDate={}, from={}, algorithmId={}, type={}",
+                 user.getUsername(), startDate, from, algorithmId, type);
 
         if (from == null && algorithmId == null && type == null) {
             trainings = trainingRepository.findAllByUser(user);
@@ -646,5 +689,18 @@ public class TrainService {
         });
 
         log.info("✅ Training {} and its model were deleted", id);
+    }
+
+    /**
+     * Get algorithms that the user has actually used in their trainings
+     */
+    @Transactional(readOnly = true)
+    public List<com.cloud_ml_app_thesis.entity.Algorithm> getUserUsedPredefinedAlgorithms(User user) {
+        return trainingRepository.findDistinctPredefinedAlgorithmsByUser(user);
+    }
+
+    @Transactional(readOnly = true)
+    public List<com.cloud_ml_app_thesis.entity.CustomAlgorithm> getUserUsedCustomAlgorithms(User user) {
+        return trainingRepository.findDistinctCustomAlgorithmsByUser(user);
     }
 }

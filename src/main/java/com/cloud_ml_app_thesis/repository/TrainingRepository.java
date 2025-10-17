@@ -123,4 +123,20 @@ public interface TrainingRepository extends JpaRepository<Training, Integer> {
 
     boolean existsByCustomAlgorithmConfigurationIdAndIdNot(Integer cfgId, Integer id);
 
+    // Get distinct predefined algorithms used by user
+    @Query("""
+    SELECT DISTINCT ac.algorithm FROM Training t
+    JOIN t.algorithmConfiguration ac
+    WHERE t.user = :user AND ac.algorithm IS NOT NULL
+    """)
+    List<com.cloud_ml_app_thesis.entity.Algorithm> findDistinctPredefinedAlgorithmsByUser(@Param("user") User user);
+
+    // Get distinct custom algorithms used by user
+    @Query("""
+    SELECT DISTINCT cac.algorithm FROM Training t
+    JOIN t.customAlgorithmConfiguration cac
+    WHERE t.user = :user AND cac.algorithm IS NOT NULL
+    """)
+    List<com.cloud_ml_app_thesis.entity.CustomAlgorithm> findDistinctCustomAlgorithmsByUser(@Param("user") User user);
+
 }

@@ -2,6 +2,8 @@ package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
 import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
+import com.cloud_ml_app_thesis.dto.request.model.ModelUpdateRequest;
+import com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest;
 import com.cloud_ml_app_thesis.dto.train.ClusterEvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.EvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.RegressionEvaluationResult;
@@ -426,5 +428,169 @@ public class ModelService {
                 .build();
     }
 
+    public com.cloud_ml_app_thesis.dto.model.ModelDTO getModelById(Integer modelId, User user) {
+        Model model = modelRepository.findById(modelId)
+                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
+
+        boolean isOwner = model.getTraining().getUser().getUsername().equals(user.getUsername());
+        boolean isPublic = model.getAccessibility().getName().equals(ModelAccessibilityEnum.PUBLIC);
+
+        if (!isOwner && !isPublic) {
+            throw new AuthorizationDeniedException("You are not authorized to view this model");
+        }
+
+        return mapToDTO(model);
+    }
+
+    @Transactional
+    public void updateModel(Integer modelId, com.cloud_ml_app_thesis.dto.request.model.ModelUpdateRequest request, User user) {
+        log.info("🔄 Updating model with ID={} by user={}", modelId, user.getUsername());
+
+        Model model = modelRepository.findById(modelId)
+                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
+
+        if (!model.getTraining().getUser().getUsername().equals(user.getUsername())) {
+            throw new AccessDeniedException("You do not own this model");
+        }
+
+        if (!model.isFinalized()) {
+            throw new IllegalStateException("Cannot update a non-finalized model");
+        }
+
+        if (request.getName() != null) {
+            model.setName(request.getName());
+        }
+        if (request.getDescription() != null) {
+            model.setDescription(request.getDescription());
+        }
+        if (request.getDataDescription() != null) {
+            model.setDataDescription(request.getDataDescription());
+        }
+        if (request.getCategoryId() != null) {
+            Category category = categoryRepository.findById(request.getCategoryId())
+                    .orElseThrow(() -> new EntityNotFoundException("Category not found"));
+            model.setCategory(category);
+        }
+
+        ModelAccessibilityEnum accessEnum = request.isPublic() ? ModelAccessibilityEnum.PUBLIC : ModelAccessibilityEnum.PRIVATE;
+        ModelAccessibility accessibility = accessibilityRepository.findByName(accessEnum)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid accessibility: " + accessEnum));
+        model.setAccessibility(accessibility);
+
+        if (request.getKeywords() != null) {
+            Set<Keyword> keywords = request.getKeywords().stream()
+                    .map(word -> keywordRepository.findByNameIgnoreCase(word)
+                            .orElseGet(() -> keywordRepository.save(new Keyword(word))))
+                    .collect(Collectors.toSet());
+            model.setKeywords(keywords);
+        }
+
+        modelRepository.save(model);
+        log.info("✅ Model with ID={} updated successfully", modelId);
+    }
+
+    @Transactional
+    public void deleteModel(Integer modelId, User user) {
+        log.info("🗑️ Deleting model with ID={} by user={}", modelId, user.getUsername());
+
+        Model model = modelRepository.findById(modelId)
+                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
+
+        if (!model.getTraining().getUser().getUsername().equals(user.getUsername())) {
+            throw new AccessDeniedException("You do not own this model");
+        }
+
+        modelRepository.delete(model);
+        log.info("✅ Model with ID={} deleted successfully", modelId);
+    }
+
+    public List<com.cloud_ml_app_thesis.dto.model.ModelDTO> searchModels(
+            com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest request,
+            User user) {
+        log.info("🔍 Searching models for user={}", user.getUsername());
+
+        List<Model> allModels = modelRepository.findAllAccessibleToUser(user.getId());
+
+        return allModels.stream()
+                .filter(model -> matchesSearchCriteria(model, request))
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    private boolean matchesSearchCriteria(Model model, com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest request) {
+        boolean isAndMode = request.getSearchMode() == null || "AND".equalsIgnoreCase(request.getSearchMode());
+
+        // Simple search: keyword matches any field
+        if (request.getKeyword() != null && !request.getKeyword().isBlank()) {
+            String keyword = request.getKeyword().toLowerCase();
+            boolean matches = (model.getName() != null && model.getName().toLowerCase().contains(keyword)) ||
+                    (model.getDescription() != null && model.getDescription().toLowerCase().contains(keyword)) ||
+                    (model.getKeywords() != null && model.getKeywords().stream()
+                            .anyMatch(kw -> kw.getName().toLowerCase().contains(keyword)));
+            if (!matches) return false;
+        }
+
+        // Advanced search fields
+        List<Boolean> matches = new ArrayList<>();
+
+        if (request.getName() != null && !request.getName().isBlank()) {
+            matches.add(model.getName() != null && model.getName().toLowerCase().contains(request.getName().toLowerCase()));
+        }
+
+        if (request.getDescription() != null && !request.getDescription().isBlank()) {
+            matches.add(model.getDescription() != null && model.getDescription().toLowerCase().contains(request.getDescription().toLowerCase()));
+        }
+
+        if (request.getKeywords() != null && !request.getKeywords().isEmpty()) {
+            boolean keywordMatch = model.getKeywords() != null && model.getKeywords().stream()
+                    .anyMatch(kw -> request.getKeywords().contains(kw.getName()));
+            matches.add(keywordMatch);
+        }
+
+        if (request.getCategoryIds() != null && !request.getCategoryIds().isEmpty()) {
+            matches.add(model.getCategory() != null && request.getCategoryIds().contains(model.getCategory().getId()));
+        }
+
+        if (request.getAccessibility() != null && !request.getAccessibility().isBlank()) {
+            matches.add(model.getAccessibility().getName().toString().equalsIgnoreCase(request.getAccessibility()));
+        }
+
+        if (request.getModelType() != null && !request.getModelType().isBlank()) {
+            matches.add(model.getModelType().getName().toString().equalsIgnoreCase(request.getModelType()));
+        }
+
+        // Date range filters
+        if (request.getTrainingDateFrom() != null) {
+            matches.add(model.getTraining().getStartedDate() != null &&
+                    !model.getTraining().getStartedDate().isBefore(request.getTrainingDateFrom()));
+        }
+
+        if (request.getTrainingDateTo() != null) {
+            matches.add(model.getTraining().getStartedDate() != null &&
+                    !model.getTraining().getStartedDate().isAfter(request.getTrainingDateTo()));
+        }
+
+        if (request.getCreationDateFrom() != null) {
+            matches.add(model.getFinalizationDate() != null &&
+                    !model.getFinalizationDate().isBefore(request.getCreationDateFrom()));
+        }
+
+        if (request.getCreationDateTo() != null) {
+            matches.add(model.getFinalizationDate() != null &&
+                    !model.getFinalizationDate().isAfter(request.getCreationDateTo()));
+        }
+
+        // If no advanced criteria, return true
+        if (matches.isEmpty()) {
+            return true;
+        }
+
+        // Apply AND or OR logic
+        if (isAndMode) {
+            return matches.stream().allMatch(m -> m);
+        } else {
+            return matches.stream().anyMatch(m -> m);
+        }
+    }
 
 }

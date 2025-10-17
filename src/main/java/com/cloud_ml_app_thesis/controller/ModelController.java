@@ -3,6 +3,8 @@ package com.cloud_ml_app_thesis.controller;
 import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.model.ModelDTO;
 import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
+import com.cloud_ml_app_thesis.dto.request.model.ModelUpdateRequest;
+import com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.service.ModelService;
@@ -200,5 +202,67 @@ public class ModelController {
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .contentLength(model.contentLength())
                 .body(model);
+    }
+
+    @Operation(summary = "Get model by ID", description = "Returns a single model's details")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Model retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Model not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied")
+    })
+    @GetMapping("/{modelId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ModelDTO> getModelById(
+            @PathVariable Integer modelId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        ModelDTO model = modelService.getModelById(modelId, accountDetails.getUser());
+        return ResponseEntity.ok(model);
+    }
+
+    @Operation(summary = "Update model", description = "Updates a model's metadata (owner only)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Model updated successfully"),
+            @ApiResponse(responseCode = "404", description = "Model not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied - not owner")
+    })
+    @PutMapping("/{modelId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<GenericResponse<Void>> updateModel(
+            @PathVariable Integer modelId,
+            @RequestBody ModelUpdateRequest request,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        log.info("Updating model with ID={} by user={}", modelId, accountDetails.getUsername());
+        modelService.updateModel(modelId, request, accountDetails.getUser());
+        return ResponseEntity.ok(new GenericResponse<>(null, null, "Model updated successfully", null));
+    }
+
+    @Operation(summary = "Delete model", description = "Deletes a model (owner only)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Model deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "Model not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied - not owner")
+    })
+    @DeleteMapping("/{modelId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<GenericResponse<Void>> deleteModel(
+            @PathVariable Integer modelId,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        log.info("Deleting model with ID={} by user={}", modelId, accountDetails.getUsername());
+        modelService.deleteModel(modelId, accountDetails.getUser());
+        return ResponseEntity.ok(new GenericResponse<>(null, null, "Model deleted successfully", null));
+    }
+
+    @Operation(summary = "Search models", description = "Search models with various criteria")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Search completed successfully")
+    })
+    @PostMapping("/search")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ModelDTO>> searchModels(
+            @RequestBody ModelSearchRequest request,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        log.info("Searching models for user={}", accountDetails.getUsername());
+        List<ModelDTO> models = modelService.searchModels(request, accountDetails.getUser());
+        return ResponseEntity.ok(models);
     }
 }
