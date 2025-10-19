@@ -25,6 +25,8 @@ import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.algorithm.AlgorithmCreateRequest;
 import com.cloud_ml_app_thesis.dto.request.algorithm.AlgorithmUpdateRequest;
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmCreateRequest;
+import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmSearchRequest;
+import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmUpdateRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.dto.weka_algorithm.WekaAlgorithmDTO;
 import com.cloud_ml_app_thesis.entity.Algorithm;
@@ -108,7 +110,7 @@ public class AlgorithmController {
         return ResponseEntity.ok(algorithmService.createAlgorithm(request));
     }
 
-    @PatchMapping("/{id}")
+    @PatchMapping("/weka/update/{id}")
     @PreAuthorize("hasAnyRole('ALGORITHM_MANAGER', 'ADMIN')")
     public ResponseEntity<Algorithm> updateAlgorithm(@AuthenticationPrincipal UserDetails userDetails, @PathVariable @Positive Integer id, @Valid  @RequestBody AlgorithmUpdateRequest request) {
         List<String> userRoles = userDetails.getAuthorities().stream()
@@ -128,6 +130,65 @@ public class AlgorithmController {
         return new ResponseEntity<>("Algorithm configuration created.", HttpStatus.CREATED);
     }
 
+    @Operation(summary = "Get custom algorithm by ID", description = "Retrieve a single custom algorithm by its ID")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Algorithm retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Algorithm not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied")
+    })
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> getCustomAlgorithmById(
+            @PathVariable @Positive Integer id,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO algorithm =
+            customAlgorithmService.getCustomAlgorithmById(id, accountDetails.getUser());
+        return ResponseEntity.ok(algorithm);
+    }
 
+    @Operation(summary = "Search custom algorithms", description = "Search custom algorithms with various criteria")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Search completed successfully"),
+            @ApiResponse(responseCode = "401", description = "User not authenticated")
+    })
+    @PostMapping("/search-custom-algorithms")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO>> searchCustomAlgorithms(
+            @Valid @RequestBody CustomAlgorithmSearchRequest request,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> algorithms =
+            customAlgorithmService.searchCustomAlgorithms(request, accountDetails.getUser());
+        return ResponseEntity.ok(algorithms);
+    }
+
+    @Operation(summary = "Update custom algorithm", description = "Update an existing custom algorithm")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Algorithm updated successfully"),
+            @ApiResponse(responseCode = "404", description = "Algorithm not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied - not the owner")
+    })
+    @PatchMapping("/custom/update/{id}")
+    public ResponseEntity<GenericResponse<Void>> updateCustomAlgorithm(
+            @PathVariable @Positive Integer id,
+            @Valid @RequestBody CustomAlgorithmUpdateRequest request,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        customAlgorithmService.updateCustomAlgorithm(id, request, accountDetails.getUser());
+        return ResponseEntity.ok(GenericResponse.success("Algorithm updated successfully", null));
+    }
+
+    @Operation(summary = "Delete custom algorithm", description = "Delete a custom algorithm")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Algorithm deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "Algorithm not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied - not the owner")
+    })
+    @DeleteMapping("/custom/delete/{id}")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<Void> deleteCustomAlgorithm(
+            @PathVariable @Positive Integer id,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        customAlgorithmService.deleteCustomAlgorithm(id, accountDetails.getUser());
+        return ResponseEntity.noContent().build();
+    }
 
 }

@@ -3,6 +3,8 @@ package com.cloud_ml_app_thesis.service;
 import com.cloud_ml_app_thesis.config.BucketResolver;
 import com.cloud_ml_app_thesis.dto.custom_algorithm.AlgorithmParameterDTO;
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmCreateRequest;
+import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmSearchRequest;
+import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmUpdateRequest;
 import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.accessibility.CustomAlgorithmAccessibility;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
@@ -19,6 +21,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -168,5 +171,173 @@ public class CustomAlgorithmService {
         return algorithm.getId();
     }
 
+    public com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO getCustomAlgorithmById(Integer id, User currentUser) {
+        CustomAlgorithm algorithm = customAlgorithmRepository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("Algorithm not found with id: " + id));
+
+        // Check if user has access to this algorithm
+        boolean isOwner = algorithm.getOwner().getId().equals(currentUser.getId());
+        boolean isPublic = algorithm.getAccessibility().getName().name().equals("PUBLIC");
+
+        if (!isOwner && !isPublic) {
+            throw new AccessDeniedException("You do not have permission to access this algorithm");
+        }
+
+        return mapToDTO(algorithm, currentUser);
+    }
+
+    public List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> searchCustomAlgorithms(
+            CustomAlgorithmSearchRequest request, User currentUser) {
+
+        // Get algorithms the user has access to
+        List<CustomAlgorithm> algorithms = customAlgorithmRepository.findByOwnerOrPublic(currentUser);
+
+        // Apply filters
+        return algorithms.stream()
+            .filter(algo -> matchesSearchCriteria(algo, request))
+            .map(algo -> mapToDTO(algo, currentUser))
+            .collect(Collectors.toList());
+    }
+
+    private boolean matchesSearchCriteria(CustomAlgorithm algorithm, CustomAlgorithmSearchRequest request) {
+        List<Boolean> matches = new ArrayList<>();
+
+        // Simple keyword search across multiple fields
+        if (StringUtils.isNotBlank(request.getKeyword())) {
+            String keyword = request.getKeyword().toLowerCase();
+            boolean keywordMatch = algorithm.getName().toLowerCase().contains(keyword)
+                || (algorithm.getDescription() != null && algorithm.getDescription().toLowerCase().contains(keyword))
+                || algorithm.getKeywords().stream().anyMatch(k -> k.toLowerCase().contains(keyword))
+                || algorithm.getImages().stream()
+                    .filter(CustomAlgorithmImage::isActive)
+                    .anyMatch(img -> img.getVersion().toLowerCase().contains(keyword));
+            matches.add(keywordMatch);
+        }
+
+        // Advanced search criteria
+        if (StringUtils.isNotBlank(request.getName())) {
+            matches.add(algorithm.getName().toLowerCase().contains(request.getName().toLowerCase()));
+        }
+
+        if (StringUtils.isNotBlank(request.getDescription())) {
+            matches.add(algorithm.getDescription() != null &&
+                algorithm.getDescription().toLowerCase().contains(request.getDescription().toLowerCase()));
+        }
+
+        if (StringUtils.isNotBlank(request.getVersion())) {
+            boolean versionMatch = algorithm.getImages().stream()
+                .filter(CustomAlgorithmImage::isActive)
+                .anyMatch(img -> img.getVersion().toLowerCase().contains(request.getVersion().toLowerCase()));
+            matches.add(versionMatch);
+        }
+
+        if (request.getAccessibility() != null) {
+            matches.add(algorithm.getAccessibility().getName().name().equals(request.getAccessibility().name()));
+        }
+
+        if (request.getKeywords() != null && !request.getKeywords().isEmpty()) {
+            boolean keywordsMatch = request.getKeywords().stream()
+                .anyMatch(keyword -> algorithm.getKeywords().stream()
+                    .anyMatch(k -> k.toLowerCase().contains(keyword.toLowerCase())));
+            matches.add(keywordsMatch);
+        }
+
+        if (StringUtils.isNotBlank(request.getCreatedAtFrom())) {
+            try {
+                LocalDateTime from = LocalDateTime.parse(request.getCreatedAtFrom());
+                matches.add(algorithm.getCreatedAt().isAfter(from) || algorithm.getCreatedAt().isEqual(from));
+            } catch (Exception e) {
+                log.warn("Invalid createdAtFrom date format: {}", request.getCreatedAtFrom());
+            }
+        }
+
+        if (StringUtils.isNotBlank(request.getCreatedAtTo())) {
+            try {
+                LocalDateTime to = LocalDateTime.parse(request.getCreatedAtTo());
+                matches.add(algorithm.getCreatedAt().isBefore(to) || algorithm.getCreatedAt().isEqual(to));
+            } catch (Exception e) {
+                log.warn("Invalid createdAtTo date format: {}", request.getCreatedAtTo());
+            }
+        }
+
+        if (matches.isEmpty()) {
+            return true; // No criteria specified, match all
+        }
+
+        // Apply search mode (AND vs OR)
+        return request.getSearchMode() == CustomAlgorithmSearchRequest.SearchMode.AND
+            ? matches.stream().allMatch(Boolean::booleanValue)
+            : matches.stream().anyMatch(Boolean::booleanValue);
+    }
+
+    @Transactional
+    public void updateCustomAlgorithm(Integer id, CustomAlgorithmUpdateRequest request, User currentUser) {
+        CustomAlgorithm algorithm = customAlgorithmRepository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("Algorithm not found with id: " + id));
+
+        // Check if user is the owner
+        if (!algorithm.getOwner().getId().equals(currentUser.getId())) {
+            throw new AccessDeniedException("You do not have permission to update this algorithm");
+        }
+
+        // Update fields only if provided (not null)
+        if (StringUtils.isNotBlank(request.getName())) {
+            algorithm.setName(request.getName());
+        }
+
+        if (request.getDescription() != null) {
+            algorithm.setDescription(request.getDescription());
+        }
+
+        if (request.getKeywords() != null) {
+            algorithm.setKeywords(request.getKeywords());
+        }
+
+        // Update accessibility
+        if (request.getAccessibility() != null) {
+            CustomAlgorithmAccessibility accessibility = algorithmAccessibilityRepository
+                .findByName(request.getAccessibility())
+                .orElseThrow(() -> new EntityNotFoundException("Invalid accessibility: " + request.getAccessibility()));
+            algorithm.setAccessibility(accessibility);
+        }
+
+        // Update active image version if provided
+        if (StringUtils.isNotBlank(request.getVersion())) {
+            algorithm.getImages().stream()
+                .filter(CustomAlgorithmImage::isActive)
+                .findFirst()
+                .ifPresent(img -> img.setVersion(request.getVersion()));
+        }
+
+        customAlgorithmRepository.save(algorithm);
+        log.info("Algorithm updated successfully: id={}, name={}", id, algorithm.getName());
+    }
+
+    @Transactional
+    public void deleteCustomAlgorithm(Integer id, User currentUser) {
+        CustomAlgorithm algorithm = customAlgorithmRepository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("Algorithm not found with id: " + id));
+
+        // Check if user is the owner
+        if (!algorithm.getOwner().getId().equals(currentUser.getId())) {
+            throw new AccessDeniedException("You do not have permission to delete this algorithm");
+        }
+
+        // Clean up MinIO files if needed
+        algorithm.getImages().forEach(image -> {
+            if (StringUtils.isNotBlank(image.getDockerTarKey())) {
+                try {
+                    String bucket = bucketResolver.resolve(BucketTypeEnum.CUSTOM_ALGORITHM);
+                    minioService.deleteObject(bucket, image.getDockerTarKey());
+                    log.info("Deleted Docker TAR from MinIO: {}/{}", bucket, image.getDockerTarKey());
+                } catch (Exception e) {
+                    log.warn("Failed to delete Docker TAR from MinIO: {}", image.getDockerTarKey(), e);
+                }
+            }
+        });
+
+        customAlgorithmRepository.delete(algorithm);
+        log.info("Algorithm deleted successfully: id={}, name={}", id, algorithm.getName());
+    }
 
 }
