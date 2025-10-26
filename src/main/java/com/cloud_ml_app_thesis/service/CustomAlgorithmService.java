@@ -2,6 +2,7 @@ package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
 import com.cloud_ml_app_thesis.dto.custom_algorithm.AlgorithmParameterDTO;
+import com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO;
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmCreateRequest;
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmSearchRequest;
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmUpdateRequest;
@@ -15,17 +16,20 @@ import com.cloud_ml_app_thesis.repository.CustomAlgorithmRepository;
 import com.cloud_ml_app_thesis.repository.accessibility.AlgorithmAccessibilityRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.oauth2.sdk.Request;
 import com.nimbusds.oauth2.sdk.util.StringUtils;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.glassfish.jersey.internal.inject.Custom;
 import org.modelmapper.ModelMapper;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -53,7 +57,14 @@ public class CustomAlgorithmService {
     ObjectMapper mapper = new ObjectMapper();
 
     public List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> getCustomAlgorithms(User currentUser) {
-        List<CustomAlgorithm> algorithms = customAlgorithmRepository.findByOwnerOrPublic(currentUser);
+        // Check if user has ADMIN role
+        boolean isAdmin = currentUser.getRoles().stream()
+                .anyMatch(role -> role.getName().name().equals("ADMIN"));
+
+        // Admin sees ALL algorithms, regular users see only their own + public ones
+        List<CustomAlgorithm> algorithms = isAdmin
+                ? customAlgorithmRepository.findAll()
+                : customAlgorithmRepository.findByOwnerOrPublic(currentUser);
 
         return algorithms.stream()
             .map(algorithm -> mapToDTO(algorithm, currentUser))
@@ -186,89 +197,92 @@ public class CustomAlgorithmService {
         return mapToDTO(algorithm, currentUser);
     }
 
-    public List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> searchCustomAlgorithms(
-            CustomAlgorithmSearchRequest request, User currentUser) {
+    //If admin should return all the algorithms even if is private or public. If is simple user should filter accessibility
+    public List<CustomAlgorithmDTO> searchCustomAlgorithms(CustomAlgorithmSearchRequest request, User user) {
 
-        // Get algorithms the user has access to
-        List<CustomAlgorithm> algorithms = customAlgorithmRepository.findByOwnerOrPublic(currentUser);
+        // Check if user has ADMIN role
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName().name().equals("ADMIN"));
 
-        // Apply filters
-        return algorithms.stream()
-            .filter(algo -> matchesSearchCriteria(algo, request))
-            .map(algo -> mapToDTO(algo, currentUser))
-            .collect(Collectors.toList());
+        // Admin sees ALL algorithms, regular users see only their own + public ones
+        List<CustomAlgorithm> algorithms = isAdmin
+                ? customAlgorithmRepository.findAll()
+                : customAlgorithmRepository.findByOwnerOrPublic(user);
+
+        log.info("Search Custom Algorithms: {} (isAdmin: {})", algorithms.size(), isAdmin);
+
+        List<CustomAlgorithmDTO> results = algorithms.stream()
+                .filter(algorithm -> matchCriteria(algorithm, request))
+                .map(algorithm -> mapToDTO(algorithm, user))
+                .collect(Collectors.toList());
+
+        return results;
     }
 
-    private boolean matchesSearchCriteria(CustomAlgorithm algorithm, CustomAlgorithmSearchRequest request) {
+    public boolean matchCriteria(CustomAlgorithm algorithm, CustomAlgorithmSearchRequest request) {
         List<Boolean> matches = new ArrayList<>();
 
-        // Simple keyword search across multiple fields
-        if (StringUtils.isNotBlank(request.getKeyword())) {
-            String keyword = request.getKeyword().toLowerCase();
-            boolean keywordMatch = algorithm.getName().toLowerCase().contains(keyword)
-                || (algorithm.getDescription() != null && algorithm.getDescription().toLowerCase().contains(keyword))
-                || algorithm.getKeywords().stream().anyMatch(k -> k.toLowerCase().contains(keyword))
-                || algorithm.getImages().stream()
-                    .filter(CustomAlgorithmImage::isActive)
-                    .anyMatch(img -> img.getVersion().toLowerCase().contains(keyword));
-            matches.add(keywordMatch);
+        //Simple search
+        if(StringUtils.isNotBlank(request.getSimpleSearchInput()) && !request.getSimpleSearchInput().equalsIgnoreCase("string")) {
+            String searchInput = request.getSimpleSearchInput().toLowerCase();
+            boolean searchMatch = algorithm.getName().toLowerCase().contains(searchInput)
+                || (algorithm.getDescription() != null && algorithm.getDescription().toLowerCase().contains(searchInput))
+                || algorithm.getKeywords().stream().anyMatch(k -> k.toLowerCase().contains(searchInput))
+                || algorithm.getAccessibility().getName().name().toLowerCase().equals(searchInput)
+                || algorithm.getCreatedAt().toString().toLowerCase().contains(searchInput);
+            matches.add(searchMatch);;
         }
 
-        // Advanced search criteria
-        if (StringUtils.isNotBlank(request.getName())) {
-            matches.add(algorithm.getName().toLowerCase().contains(request.getName().toLowerCase()));
+        // Advanced Search - name AND description
+        if(StringUtils.isNotBlank(request.getName()) && !request.getName().equalsIgnoreCase("string")) {
+            boolean nameMatch = algorithm.getName().toLowerCase().contains(request.getName().toLowerCase());
+            matches.add(nameMatch);
+            log.info("  ➜ Name '{}' match: {}", request.getName(), nameMatch);
         }
 
-        if (StringUtils.isNotBlank(request.getDescription())) {
-            matches.add(algorithm.getDescription() != null &&
-                algorithm.getDescription().toLowerCase().contains(request.getDescription().toLowerCase()));
+        if(StringUtils.isNotBlank(request.getDescription()) && !request.getDescription().equalsIgnoreCase("string")) {
+            boolean descMatch = algorithm.getDescription() != null &&
+                algorithm.getDescription().toLowerCase().contains(request.getDescription().toLowerCase());
+            matches.add(descMatch);
+            log.info("  ➜ Description '{}' match: {}", request.getDescription(), descMatch);
         }
 
-        if (StringUtils.isNotBlank(request.getVersion())) {
-            boolean versionMatch = algorithm.getImages().stream()
-                .filter(CustomAlgorithmImage::isActive)
-                .anyMatch(img -> img.getVersion().toLowerCase().contains(request.getVersion().toLowerCase()));
-            matches.add(versionMatch);
-        }
-
-        if (request.getAccessibility() != null) {
-            matches.add(algorithm.getAccessibility().getName().name().equals(request.getAccessibility().name()));
-        }
-
-        if (request.getKeywords() != null && !request.getKeywords().isEmpty()) {
-            boolean keywordsMatch = request.getKeywords().stream()
-                .anyMatch(keyword -> algorithm.getKeywords().stream()
-                    .anyMatch(k -> k.toLowerCase().contains(keyword.toLowerCase())));
-            matches.add(keywordsMatch);
-        }
-
-        if (StringUtils.isNotBlank(request.getCreatedAtFrom())) {
+        // Date range filter - FROM
+        if(StringUtils.isNotBlank(request.getCreatedAtFrom()) && !request.getCreatedAtFrom().equalsIgnoreCase("string")) {
             try {
-                LocalDateTime from = LocalDateTime.parse(request.getCreatedAtFrom());
-                matches.add(algorithm.getCreatedAt().isAfter(from) || algorithm.getCreatedAt().isEqual(from));
+                LocalDateTime from = parseDateTime(request.getCreatedAtFrom(), true);
+                boolean fromMatch = algorithm.getCreatedAt().isAfter(from) || algorithm.getCreatedAt().isEqual(from);
+                matches.add(fromMatch);
+                log.info("  ➜ CreatedAtFrom '{}' match: {} (algo date: {})", request.getCreatedAtFrom(), fromMatch, algorithm.getCreatedAt());
             } catch (Exception e) {
-                log.warn("Invalid createdAtFrom date format: {}", request.getCreatedAtFrom());
+                log.warn("Invalid createdAtFrom format: {}", request.getCreatedAtFrom());
             }
         }
 
-        if (StringUtils.isNotBlank(request.getCreatedAtTo())) {
+        // Date range filter - TO
+        if(StringUtils.isNotBlank(request.getCreatedAtTo()) && !request.getCreatedAtTo().equalsIgnoreCase("string")) {
             try {
-                LocalDateTime to = LocalDateTime.parse(request.getCreatedAtTo());
-                matches.add(algorithm.getCreatedAt().isBefore(to) || algorithm.getCreatedAt().isEqual(to));
+                LocalDateTime to = parseDateTime(request.getCreatedAtTo(), false);
+                boolean toMatch = algorithm.getCreatedAt().isBefore(to) || algorithm.getCreatedAt().isEqual(to);
+                matches.add(toMatch);
+                log.info("  ➜ CreatedAtTo '{}' match: {} (algo date: {})", request.getCreatedAtTo(), toMatch, algorithm.getCreatedAt());
             } catch (Exception e) {
-                log.warn("Invalid createdAtTo date format: {}", request.getCreatedAtTo());
+                log.warn("Invalid createdAtTo format: {}", request.getCreatedAtTo());
             }
         }
-
-        if (matches.isEmpty()) {
-            return true; // No criteria specified, match all
+        if(matches.isEmpty()){
+            return true;
         }
 
-        // Apply search mode (AND vs OR)
-        return request.getSearchMode() == CustomAlgorithmSearchRequest.SearchMode.AND
-            ? matches.stream().allMatch(Boolean::booleanValue)
-            : matches.stream().anyMatch(Boolean::booleanValue);
+        log.info("matches found: {}",matches.stream().allMatch(Boolean::booleanValue));
+
+        boolean result = request.getSearchMode() == CustomAlgorithmSearchRequest.SearchMode.AND
+                ? matches.stream().allMatch(Boolean::booleanValue)
+                : matches.stream().anyMatch(Boolean::booleanValue);
+
+        return result;
     }
+
 
     @Transactional
     public void updateCustomAlgorithm(Integer id, CustomAlgorithmUpdateRequest request, User currentUser) {
@@ -338,6 +352,26 @@ public class CustomAlgorithmService {
 
         customAlgorithmRepository.delete(algorithm);
         log.info("Algorithm deleted successfully: id={}, name={}", id, algorithm.getName());
+    }
+
+    /**
+     * Parse date/datetime string to LocalDateTime.
+     * Supports both date-only format (YYYY-MM-DD) and full datetime format.
+     *
+     * @param dateString the date or datetime string to parse
+     * @param isStartOfDay if true and date-only format, returns start of day (00:00:00);
+     *                     if false and date-only format, returns end of day (23:59:59.999999999)
+     * @return parsed LocalDateTime
+     */
+    private LocalDateTime parseDateTime(String dateString, boolean isStartOfDay) {
+        try {
+            // Try parsing as date-only format (YYYY-MM-DD)
+            LocalDate date = LocalDate.parse(dateString);
+            return isStartOfDay ? date.atStartOfDay() : date.atTime(23, 59, 59, 999999999);
+        } catch (Exception e1) {
+            // If that fails, try parsing as full LocalDateTime
+            return LocalDateTime.parse(dateString);
+        }
     }
 
 }

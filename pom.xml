@@ -43,6 +43,14 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
@@ -202,6 +210,25 @@
                 <version>3.0.0</version>
                 <configuration>
                     <argLine>-Djava.io.tmpdir=${project.build.directory}</argLine>
+                </configuration>
+            </plugin>
+
+            <!-- Flyway Maven Plugin -->
+            <plugin>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-maven-plugin</artifactId>
+                <version>10.20.1</version>
+                <configuration>
+                    <!--suppress UnresolvedMavenProperty -->
+                    <url>${env.FLYWAY_URL}</url>
+                    <!--suppress UnresolvedMavenProperty -->
+                    <user>${env.FLYWAY_USER}</user>
+                    <!--suppress UnresolvedMavenProperty -->
+                    <password>${env.FLYWAY_PASSWORD}</password>
+                    <locations>
+                        <location>filesystem:src/main/resources/db/migration</location>
+                    </locations>
+                    <baselineOnMigrate>true</baselineOnMigrate>
                 </configuration>
             </plugin>
 

@@ -19,7 +19,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate  # Changed from 'update' to work with Flyway
     show-sql: false
 
   mail:

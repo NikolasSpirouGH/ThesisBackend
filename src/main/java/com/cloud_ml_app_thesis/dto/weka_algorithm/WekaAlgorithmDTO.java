@@ -9,5 +9,6 @@ import lombok.*;
 @NoArgsConstructor
 public class WekaAlgorithmDTO {
     private Integer id;
+    private String description;
     private String name;
 }

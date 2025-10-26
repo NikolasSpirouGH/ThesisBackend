@@ -75,6 +75,7 @@ public class AlgorithmController {
     }
 
     @GetMapping("/get-algorithms")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<List<WekaAlgorithmDTO>> getAlgorithms() {
         return ResponseEntity.ok(algorithmService.getAlgorithms());
     }
@@ -85,7 +86,7 @@ public class AlgorithmController {
             @ApiResponse(responseCode = "401", description = "User not authenticated")
     })
     @GetMapping("/get-custom-algorithms")
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO>> getCustomAlgorithms(
             @AuthenticationPrincipal AccountDetails accountDetails) {
         List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> algorithms =
@@ -152,12 +153,24 @@ public class AlgorithmController {
             @ApiResponse(responseCode = "401", description = "User not authenticated")
     })
     @PostMapping("/search-custom-algorithms")
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO>> searchCustomAlgorithms(
             @Valid @RequestBody CustomAlgorithmSearchRequest request,
             @AuthenticationPrincipal AccountDetails accountDetails) {
         List<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> algorithms =
             customAlgorithmService.searchCustomAlgorithms(request, accountDetails.getUser());
+        return ResponseEntity.ok(algorithms);
+    }
+
+    @Operation(summary = "Search weka algorithms", description = "Search weka algorithms")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Search completed successfully"),
+            @ApiResponse(responseCode = "401", description = "User not authenticated")
+    })
+    @PostMapping("search-weka-algorithms")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<WekaAlgorithmDTO>> searchWekaAlgorithms(String inputSearch, @AuthenticationPrincipal AccountDetails accountDetails) {
+        List<WekaAlgorithmDTO> algorithms = algorithmService.searchWekaAlgorithm(inputSearch, accountDetails.getUser());
         return ResponseEntity.ok(algorithms);
     }
 
