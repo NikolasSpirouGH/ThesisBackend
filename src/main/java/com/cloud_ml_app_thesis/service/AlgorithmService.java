@@ -5,11 +5,14 @@ import com.cloud_ml_app_thesis.dto.request.algorithm.AlgorithmUpdateRequest;
 import com.cloud_ml_app_thesis.dto.weka_algorithm.WekaAlgorithmDTO;
 import com.cloud_ml_app_thesis.entity.Algorithm;
 import com.cloud_ml_app_thesis.entity.AlgorithmConfiguration;
+import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.repository.AlgorithmConfigurationRepository;
 import com.cloud_ml_app_thesis.repository.AlgorithmRepository;
 import com.cloud_ml_app_thesis.util.ValidationUtil;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.reflections.Reflections;
 import org.reflections.scanners.SubTypesScanner;
 import org.reflections.util.ClasspathHelper;
@@ -23,6 +26,7 @@ import weka.core.OptionHandler;
 
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -187,5 +191,32 @@ public class AlgorithmService {
     }
 
 
+    public List<WekaAlgorithmDTO> searchWekaAlgorithm(String inputSearch, User user) {
+        List<Algorithm> algorithms = algorithmRepository.findAll();
 
+        if(!StringUtils.isNotBlank(inputSearch) || inputSearch.equals("")) {
+            return algorithms.stream()
+                    .map(algo -> mapToDTO(algo))
+                    .collect(Collectors.toList());
+        }
+        return algorithms.stream()
+                .filter(algo -> {
+                    String searchLower = inputSearch.toLowerCase();
+                    boolean nameMatch = algo.getName().toLowerCase().contains(searchLower);
+                    boolean descriptionMatch = algo.getDescription() != null &&
+                                              algo.getDescription().toLowerCase().contains(searchLower);
+                    return nameMatch || descriptionMatch;
+                })
+                .map(algo -> mapToDTO(algo))  // Convert Algorithm to WekaAlgorithmDTO
+                .collect(Collectors.toList());
+    }
+
+    // Helper method to convert to DTO
+    private WekaAlgorithmDTO mapToDTO(Algorithm algorithm) {
+        return WekaAlgorithmDTO.builder()
+                .id(algorithm.getId())
+                .name(algorithm.getName())
+                .description(algorithm.getDescription())
+                .build();
+    }
 }

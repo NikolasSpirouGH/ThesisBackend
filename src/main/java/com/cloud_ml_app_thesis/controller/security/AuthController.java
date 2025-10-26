@@ -48,6 +48,7 @@ public class AuthController {
             @ApiResponse(responseCode = "400", description = "Invalid input")
     })
     @PostMapping("/register")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<GenericResponse<?>> registerUser(@Valid @RequestBody UserRegisterRequest registerRequest) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -61,6 +62,7 @@ public class AuthController {
             @ApiResponse(responseCode = "401", description = "Invalid credentials")
     })
     @PostMapping("/login")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<GenericResponse<?>> login(@Valid @RequestBody LoginRequest request) {
         GenericResponse<?> response = authService.login(request);
 
@@ -84,7 +86,7 @@ public class AuthController {
         return ResponseEntity.ok(new GenericResponse<>("Successfully logged out", null, "LOGOUT", new Metadata()));
     }
 
-        @Operation(summary = "Change user password", description = "Allows a user to change their password by providing the old one and a matching new password")
+    @Operation(summary = "Change user password", description = "Allows a user to change their password by providing the old one and a matching new password")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Password changed successfully"),
             @ApiResponse(responseCode = "400", description = "Validation error or password mismatch"),
@@ -105,7 +107,7 @@ public class AuthController {
             @ApiResponse(responseCode = "200", description = "Password reset email sent successfully."),
             @ApiResponse(responseCode = "400", description = "Invalid email address provided.")
     })
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<GenericResponse<?>> forgotPassword(@Valid @RequestBody EmailRequest userEmailRequest) {
             authService.resetPasswordRequest(userEmailRequest.getEmail());
         return ResponseEntity.ok(new GenericResponse<>(null, null, "If the email exists, a password reset link has been sent.", new Metadata()));
@@ -117,6 +119,7 @@ public class AuthController {
             @ApiResponse(responseCode = "400", description = "Invalid or expired token.")
     })
     @PostMapping("/reset-password")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<GenericResponse<?>> resetPassword(@Valid @RequestBody ResetPasswordRequest resetPasswordRequest) {
         Optional<User> user = authService.validatePasswordResetToken(resetPasswordRequest.getToken());
         if (user.isPresent()) {

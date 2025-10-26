@@ -9,4 +9,6 @@ public interface AlgorithmRepository extends JpaRepository<Algorithm, Integer> {
     Algorithm findByName(String name);
 
     boolean existsByName(String name);
+
+    boolean existsByClassName(String className);
 }

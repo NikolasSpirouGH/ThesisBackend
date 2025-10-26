@@ -7,3 +7,9 @@
 .venv/
 venv/
 *:Zone.Identifier
+
+# Environment files (keep sensitive data out of Git)
+.env
+.env.*
+!.env.*.example
+.local.env
