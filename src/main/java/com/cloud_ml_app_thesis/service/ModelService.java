@@ -1,15 +1,14 @@
 package com.cloud_ml_app_thesis.service;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
+import com.cloud_ml_app_thesis.dto.model.ModelDTO;
 import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
-import com.cloud_ml_app_thesis.dto.request.model.ModelUpdateRequest;
 import com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest;
 import com.cloud_ml_app_thesis.dto.train.ClusterEvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.EvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.RegressionEvaluationResult;
 import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.accessibility.ModelAccessibility;
-import com.cloud_ml_app_thesis.entity.model.Keyword;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
@@ -22,6 +21,8 @@ import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.ModelTypeRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelStatusRepository;
 import com.cloud_ml_app_thesis.util.AlgorithmUtil;
+import com.cloud_ml_app_thesis.util.DateUtil;
+import com.nimbusds.oauth2.sdk.util.StringUtils;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import jakarta.persistence.EntityNotFoundException;
@@ -49,8 +50,10 @@ import weka.core.Instances;
 import java.awt.geom.Point2D;
 import java.io.*;
 import java.net.URI;
-import java.time.ZoneId;
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
+import java.time.chrono.ChronoZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -67,7 +70,7 @@ public class ModelService {
     private final CategoryRepository categoryRepository;
     private final ModelStatusRepository modelStatusRepository;
     private final ModelAccessibilityRepository accessibilityRepository;
-    private final KeywordRepository keywordRepository;
+    private final DateUtil dateUtil;
 
     private final BucketResolver bucketResolver;
     private static final Logger logger = LoggerFactory.getLogger(ModelService.class);
@@ -121,6 +124,10 @@ public class ModelService {
             throw new IllegalStateException("No model found for this training.");
         }
 
+        if(model.isFinalized()) {
+            throw new IllegalStateException("Model is finalized.");
+        }
+
         log.info("🧩 Setting model metadata...");
         model.setName(request.getName());
         log.info("✔️ modelName = {}", request.getName());
@@ -148,12 +155,8 @@ public class ModelService {
         model.setAccessibility(accessibility);
         log.info("✔️ accessibility = {}", accessEnum);
 
-        Set<Keyword> keywords = request.getKeywords().stream()
-                .map(word -> keywordRepository.findByNameIgnoreCase(word)
-                        .orElseGet(() -> keywordRepository.save(new Keyword(word))))
-                .collect(Collectors.toSet());
-        model.setKeywords(keywords);
-        log.info("✔️ keywords = {}", keywords.stream().map(Keyword::getName).toList());
+        model.setKeywords(new ArrayList<>(request.getKeywords()));
+        log.info("✔️ keywords = {}", request.getKeywords());
 
         model.setFinalized(true);
         modelRepository.save(model);
@@ -176,19 +179,11 @@ public class ModelService {
                 .orElseThrow(() -> new EntityNotFoundException("Could not find IN_PROGRESS model status")));
         model.setModelType(modelType);
         //ZonedDateTime finishedZoned = training.getFinishedDate().withZoneSameInstant(ZoneId.of("Europe/Athens"));
-        model.setFinishedAt(ZonedDateTime.now());
+        model.setCreatedAt(ZonedDateTime.now());
         model.setAccessibility(accessibility);
         model.setCategory(defaultCategory);
 
         modelRepository.save(model);
-    }
-
-    private Clusterer trainClusterer(Instances data, String className, String options) throws Exception {
-        data.randomize(new Random(1));
-        Clusterer clus = AlgorithmUtil.getClustererInstance(className);
-        AlgorithmUtil.setClustererOptions(clus, options.split(","));
-        clus.buildClusterer(data);
-        return clus;
     }
 
     public ByteArrayResource getMetricsFile(Integer id, User user) {
@@ -395,7 +390,6 @@ public class ModelService {
         } else if (training.getCustomAlgorithmConfiguration() != null) {
             algorithmName = training.getCustomAlgorithmConfiguration().getAlgorithm().getName();
             // Custom algorithms don't have an algorithm type specified
-            algorithmType = null;
         }
 
         String datasetName = training.getDatasetConfiguration() != null
@@ -403,7 +397,7 @@ public class ModelService {
             : null;
 
         Set<String> keywords = model.getKeywords() != null
-            ? model.getKeywords().stream().map(Keyword::getName).collect(Collectors.toSet())
+            ? new HashSet<>(model.getKeywords())
             : Set.of();
 
         return com.cloud_ml_app_thesis.dto.model.ModelDTO.builder()
@@ -421,7 +415,7 @@ public class ModelService {
                 .categoryName(model.getCategory() != null ? model.getCategory().getName() : null)
                 .categoryId(model.getCategory() != null ? model.getCategory().getId() : null)
                 .keywords(keywords)
-                .finishedAt(model.getFinishedAt())
+                .createdAt(model.getCreatedAt())
                 .finalizationDate(model.getFinalizationDate())
                 .finalized(model.isFinalized())
                 .ownerUsername(training.getUser().getUsername())
@@ -478,15 +472,61 @@ public class ModelService {
         model.setAccessibility(accessibility);
 
         if (request.getKeywords() != null) {
-            Set<Keyword> keywords = request.getKeywords().stream()
-                    .map(word -> keywordRepository.findByNameIgnoreCase(word)
-                            .orElseGet(() -> keywordRepository.save(new Keyword(word))))
-                    .collect(Collectors.toSet());
-            model.setKeywords(keywords);
+            model.setKeywords(new ArrayList<>(request.getKeywords()));
         }
 
         modelRepository.save(model);
         log.info("✅ Model with ID={} updated successfully", modelId);
+    }
+
+    @Transactional
+    public void updateModelContent(Integer modelId, Integer newTrainingId, User user) {
+        log.info("🔄 Updating model content: modelId={}, newTrainingId={}, user={}",
+                modelId, newTrainingId, user.getUsername());
+
+        Model model = modelRepository.findById(modelId)
+                .orElseThrow(() -> new EntityNotFoundException("Model not found"));
+
+        // Authorization: Only owner can change content
+        if (!model.getTraining().getUser().getUsername().equals(user.getUsername())) {
+            log.warn("⛔ Access denied: User {} tried to update model {} owned by {}",
+                    user.getUsername(), modelId, model.getTraining().getUser().getUsername());
+            throw new AccessDeniedException("You do not own this model");
+        }
+
+        Training newTraining = trainingRepository.findById(newTrainingId)
+                .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+
+        // Verify new training belongs to same user
+        if (!newTraining.getUser().getUsername().equals(user.getUsername())) {
+            log.warn("⛔ Access denied: User {} tried to use training {} owned by {}",
+                    user.getUsername(), newTrainingId, newTraining.getUser().getUsername());
+            throw new AccessDeniedException("You do not own this training");
+        }
+
+        // Check if training is completed
+        if (!newTraining.getStatus().getName().name().equals("COMPLETED")
+                && !newTraining.getStatus().getName().name().equals("FAILED")) {
+            log.warn("⛔ Training {} is not completed (status: {})",
+                    newTrainingId, newTraining.getStatus().getName());
+            throw new IllegalStateException("Cannot use training that is not completed");
+        }
+
+        // Check if new training already has a model
+        if (newTraining.getModel() != null && !newTraining.getModel().getId().equals(modelId)) {
+            log.warn("⛔ Training {} is already associated with model {}",
+                    newTrainingId, newTraining.getModel().getId());
+            throw new IllegalStateException("Training is already associated with another model");
+        }
+
+        Training oldTraining = model.getTraining();
+        log.info("📦 Replacing model {} training: {} → {}", modelId, oldTraining.getId(), newTrainingId);
+
+        model.setTraining(newTraining);
+        model.setCreatedAt(ZonedDateTime.now());
+
+        modelRepository.save(model);
+        log.info("✅ Model content updated successfully: modelId={}, newTrainingId={}", modelId, newTrainingId);
     }
 
     @Transactional
@@ -504,93 +544,115 @@ public class ModelService {
         log.info("✅ Model with ID={} deleted successfully", modelId);
     }
 
-    public List<com.cloud_ml_app_thesis.dto.model.ModelDTO> searchModels(
-            com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest request,
-            User user) {
-        log.info("🔍 Searching models for user={}", user.getUsername());
+    public List<ModelDTO> searchModels(ModelSearchRequest request, User user) {
 
-        List<Model> allModels = modelRepository.findAllAccessibleToUser(user.getId());
+        // Check if user has ADMIN role
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName().name().equals("ADMIN"));
 
-        return allModels.stream()
-                .filter(model -> matchesSearchCriteria(model, request))
+        // Admin sees ALL algorithms, regular users see only their own + public ones
+        List<Model> models = isAdmin
+                ? modelRepository.findAll()
+                : modelRepository.findAllAccessibleToUser(user.getId());
+
+        log.info("Search Models: {} (isAdmin: {})", models.size(), isAdmin);
+
+        return models.stream()
+                .filter(model -> matchCriteria(model, request))
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
-    private boolean matchesSearchCriteria(Model model, com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest request) {
-        boolean isAndMode = request.getSearchMode() == null || "AND".equalsIgnoreCase(request.getSearchMode());
-
-        // Simple search: keyword matches any field
-        if (request.getKeyword() != null && !request.getKeyword().isBlank()) {
-            String keyword = request.getKeyword().toLowerCase();
-            boolean matches = (model.getName() != null && model.getName().toLowerCase().contains(keyword)) ||
-                    (model.getDescription() != null && model.getDescription().toLowerCase().contains(keyword)) ||
-                    (model.getKeywords() != null && model.getKeywords().stream()
-                            .anyMatch(kw -> kw.getName().toLowerCase().contains(keyword)));
-            if (!matches) return false;
-        }
-
-        // Advanced search fields
+    public boolean matchCriteria(Model model, ModelSearchRequest request) {
         List<Boolean> matches = new ArrayList<>();
 
-        if (request.getName() != null && !request.getName().isBlank()) {
-            matches.add(model.getName() != null && model.getName().toLowerCase().contains(request.getName().toLowerCase()));
+        //Simple search
+        if(StringUtils.isNotBlank(request.getSimpleSearchInput()) && !request.getSimpleSearchInput().equalsIgnoreCase("string")) {
+            String searchInput = request.getSimpleSearchInput().toLowerCase();
+            boolean searchMatch = model.getName() != null && model.getName().toLowerCase().contains(searchInput)
+                    || (model.getDescription() != null && model.getDescription().toLowerCase().contains(searchInput))
+                    || (model.getKeywords() != null && model.getKeywords().stream().anyMatch(k -> k.toLowerCase().contains(searchInput)))
+                    || (model.getAccessibility().getName().name().toLowerCase().equals(searchInput))
+                    || (model.getCategory().getName().toLowerCase().contains(searchInput));
+            matches.add(searchMatch);
         }
 
-        if (request.getDescription() != null && !request.getDescription().isBlank()) {
-            matches.add(model.getDescription() != null && model.getDescription().toLowerCase().contains(request.getDescription().toLowerCase()));
+        // Advanced Search - name AND description
+        if(StringUtils.isNotBlank(request.getName()) && !request.getName().equalsIgnoreCase("string")) {
+            boolean nameMatch = model.getName() != null && model.getName().toLowerCase().contains(request.getName().toLowerCase());
+            matches.add(nameMatch);
+            log.info("  ➜ Name '{}' match: {}", request.getName(), nameMatch);
         }
 
-        if (request.getKeywords() != null && !request.getKeywords().isEmpty()) {
-            boolean keywordMatch = model.getKeywords() != null && model.getKeywords().stream()
-                    .anyMatch(kw -> request.getKeywords().contains(kw.getName()));
-            matches.add(keywordMatch);
+        if(StringUtils.isNotBlank(request.getDescription()) && !request.getDescription().equalsIgnoreCase("string")) {
+            boolean descMatch = model.getDescription() != null &&
+                    model.getDescription().toLowerCase().contains(request.getDescription().toLowerCase());
+            matches.add(descMatch);
+            log.info("  ➜ Description '{}' match: {}", request.getDescription(), descMatch);
         }
 
-        if (request.getCategoryIds() != null && !request.getCategoryIds().isEmpty()) {
-            matches.add(model.getCategory() != null && request.getCategoryIds().contains(model.getCategory().getId()));
+        if(StringUtils.isNotBlank(request.getCategory()) && !request.getCategory().equalsIgnoreCase("string")) {
+            boolean categoryMatch = model.getCategory() != null &&
+                    model.getCategory().getName().toLowerCase().contains(request.getCategory().toLowerCase());
+            matches.add(categoryMatch);
+            log.info("  ➜ Category '{}' match: {}", request.getCategory(), categoryMatch);
         }
 
-        if (request.getAccessibility() != null && !request.getAccessibility().isBlank()) {
-            matches.add(model.getAccessibility().getName().toString().equalsIgnoreCase(request.getAccessibility()));
+        // Date range filter - combine FROM and TO with AND logic
+        boolean hasDateFrom = StringUtils.isNotBlank(request.getCreatedAtFrom()) && !request.getCreatedAtFrom().equalsIgnoreCase("string");
+        boolean hasDateTo = StringUtils.isNotBlank(request.getCreatedAtTo()) && !request.getCreatedAtTo().equalsIgnoreCase("string");
+
+        if(hasDateFrom || hasDateTo) {
+            if(model.getCreatedAt() == null) {
+                // If createdAt is null, date filter always fails
+                matches.add(false);
+                log.info("  ➜ Date range match: false (model createdAt is null)");
+            } else {
+                LocalDateTime createdAt = model.getCreatedAt().toLocalDateTime();
+                boolean dateMatch = true;
+
+                // Check FROM date
+                if(hasDateFrom) {
+                    try {
+                        LocalDateTime from = dateUtil.parseDateTime(request.getCreatedAtFrom(), true);
+                        boolean fromMatch = createdAt.isAfter(from) || createdAt.isEqual(from);
+                        dateMatch = dateMatch && fromMatch;
+                        log.info("  ➜ CreatedAtFrom '{}' match: {} (model date: {})",
+                                request.getCreatedAtFrom(), fromMatch, model.getCreatedAt());
+                    } catch (DateTimeParseException e) {
+                        log.warn("Invalid createdAtFrom format: {}", request.getCreatedAtFrom(), e);
+                        dateMatch = false;
+                    }
+                }
+
+                // Check TO date
+                if(hasDateTo) {
+                    try {
+                        LocalDateTime to = dateUtil.parseDateTime(request.getCreatedAtTo(), true);
+                        boolean toMatch = createdAt.isBefore(to) || createdAt.isEqual(to);
+                        dateMatch = dateMatch && toMatch;
+                        log.info("  ➜ CreatedAtTo '{}' match: {} (model date: {})",
+                                request.getCreatedAtTo(), toMatch, model.getCreatedAt());
+                    } catch (DateTimeParseException e) {
+                        log.warn("Invalid createdAtTo format: {}", request.getCreatedAtTo(), e);
+                        dateMatch = false;
+                    }
+                }
+
+                matches.add(dateMatch);
+                log.info("  ➜ Date range overall match: {}", dateMatch);
+            }
         }
 
-        if (request.getModelType() != null && !request.getModelType().isBlank()) {
-            matches.add(model.getModelType().getName().toString().equalsIgnoreCase(request.getModelType()));
-        }
-
-        // Date range filters
-        if (request.getTrainingDateFrom() != null) {
-            matches.add(model.getTraining().getStartedDate() != null &&
-                    !model.getTraining().getStartedDate().isBefore(request.getTrainingDateFrom()));
-        }
-
-        if (request.getTrainingDateTo() != null) {
-            matches.add(model.getTraining().getStartedDate() != null &&
-                    !model.getTraining().getStartedDate().isAfter(request.getTrainingDateTo()));
-        }
-
-        if (request.getCreationDateFrom() != null) {
-            matches.add(model.getFinalizationDate() != null &&
-                    !model.getFinalizationDate().isBefore(request.getCreationDateFrom()));
-        }
-
-        if (request.getCreationDateTo() != null) {
-            matches.add(model.getFinalizationDate() != null &&
-                    !model.getFinalizationDate().isAfter(request.getCreationDateTo()));
-        }
-
-        // If no advanced criteria, return true
-        if (matches.isEmpty()) {
+        if(matches.isEmpty()){
             return true;
         }
 
-        // Apply AND or OR logic
-        if (isAndMode) {
-            return matches.stream().allMatch(m -> m);
-        } else {
-            return matches.stream().anyMatch(m -> m);
-        }
+        log.info("matches found: {}",matches.stream().allMatch(Boolean::booleanValue));
+
+        return request.getSearchMode() == ModelSearchRequest.SearchMode.AND
+                ? matches.stream().allMatch(Boolean::booleanValue)
+                : matches.stream().anyMatch(Boolean::booleanValue);
     }
 
 }

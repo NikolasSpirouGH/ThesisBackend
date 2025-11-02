@@ -1,15 +1,15 @@
 package com.cloud_ml_app_thesis.validation.validator;
 
-import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmSearchRequest;
+import com.cloud_ml_app_thesis.dto.request.SearchableRequest;
 import com.cloud_ml_app_thesis.validation.validation.ValidSearchRequest;
 import com.nimbusds.oauth2.sdk.util.StringUtils;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
-public class SearchRequestValidator implements ConstraintValidator<ValidSearchRequest, CustomAlgorithmSearchRequest> {
+public class SearchRequestValidator implements ConstraintValidator<ValidSearchRequest, SearchableRequest> {
 
     @Override
-    public boolean isValid(CustomAlgorithmSearchRequest request, ConstraintValidatorContext context) {
+    public boolean isValid(SearchableRequest request, ConstraintValidatorContext context) {
         if(request == null) {
             return true;
         }

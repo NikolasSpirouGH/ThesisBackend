@@ -27,7 +27,7 @@ public class ModelDTO {
     private String categoryName;
     private Integer categoryId;
     private Set<String> keywords;
-    private ZonedDateTime finishedAt;
+    private ZonedDateTime createdAt;
     private ZonedDateTime finalizationDate;
     private boolean finalized;
     private String ownerUsername;

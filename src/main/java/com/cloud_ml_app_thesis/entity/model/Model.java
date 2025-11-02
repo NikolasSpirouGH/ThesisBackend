@@ -1,6 +1,5 @@
 package com.cloud_ml_app_thesis.entity.model;
 
-import com.cloud_ml_app_thesis.entity.AlgorithmType;
 import com.cloud_ml_app_thesis.entity.ModelType;
 import com.cloud_ml_app_thesis.entity.Category;
 import com.cloud_ml_app_thesis.entity.Training;
@@ -12,9 +11,7 @@ import lombok.*;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 @Entity
 @Table(name = "models")
@@ -29,8 +26,8 @@ public class Model {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @OneToOne
-    @JoinColumn(name = "training_id")
+    @OneToOne(optional = false)
+    @JoinColumn(name = "training_id", nullable = false)
     private Training training;
 
     @Column(name = "model_url", length = 1000)
@@ -62,16 +59,13 @@ public class Model {
     @Size(max = 500)
     private String dataDescription;
 
-    @ManyToMany
-    @JoinTable(
-            name = "model_keywords",
-            joinColumns = @JoinColumn(name = "model_id"),
-            inverseJoinColumns = @JoinColumn(name = "keyword_id")
-    )
-    private Set<Keyword> keywords = new HashSet<>();
+    @ElementCollection
+    @CollectionTable(name = "model_keywords", joinColumns = @JoinColumn(name = "model_id"))
+    @Column(name = "keyword")
+    private List<String> keywords;
 
     @Column
-    private ZonedDateTime finishedAt;
+    private ZonedDateTime createdAt;
 
     @Column(name = "finalized")
     private boolean finalized;

@@ -80,6 +80,8 @@ public class SecurityConfig {
 
     @Bean
     public Argon2PasswordEncoder passwordEncoder() {
+        // Parameters must match the password hashes in the actual database
+        // m=4096 (4MB), t=3 (iterations), p=1 (parallelism)
         return new Argon2PasswordEncoder(16, 32, 1, 4096, 3);
     }
 

@@ -9,7 +9,8 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 public class PasswordHashGenerator {
 
     public static void main(String[] args) {
-        Argon2PasswordEncoder encoder = new Argon2PasswordEncoder(16, 32, 1, 16384, 2);
+        // Must match SecurityConfig parameters: (16, 32, 1, 4096, 3)
+        Argon2PasswordEncoder encoder = new Argon2PasswordEncoder(16, 32, 1, 4096, 3);
 
         String adminPassword = "adminPassword";
         String userPassword = "userPassword";

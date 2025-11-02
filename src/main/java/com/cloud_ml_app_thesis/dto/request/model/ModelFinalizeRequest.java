@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.List;
 import java.util.Set;
 
 @Getter
@@ -16,7 +17,7 @@ import java.util.Set;
 @AllArgsConstructor
 public class ModelFinalizeRequest {
     private String name;
-    private Set<@Size(max = 25) String> keywords;
+    private List<@Size(max = 25) String> keywords;
     @Size(max = 500)
     private String description;
     @Size(max = 500)
