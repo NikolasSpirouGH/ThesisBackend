@@ -1,35 +1,39 @@
 package com.cloud_ml_app_thesis.dto.request.model;
 
+import com.cloud_ml_app_thesis.dto.request.SearchableRequest;
+import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmSearchRequest;
+import com.cloud_ml_app_thesis.validation.validation.ValidSearchRequest;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Set;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class ModelSearchRequest {
+@ValidSearchRequest
+public class ModelSearchRequest implements SearchableRequest {
     // Simple search: keyword that matches any metadata
-    private String keyword;
+    private String simpleSearchInput;
 
     // Advanced search fields
     private String name;
     private String description;
-    private Set<String> keywords;
-    private Set<Integer> categoryIds;
+    private List<String> keywords;
     private String accessibility; // PUBLIC, PRIVATE
     private String modelType; // CLASSIFICATION, REGRESSION, CLUSTERING
+    private String category;
+    private String createdAtFrom;
+    private String createdAtTo;
 
-    // Date ranges
-    private ZonedDateTime trainingDateFrom;
-    private ZonedDateTime trainingDateTo;
-    private ZonedDateTime creationDateFrom;
-    private ZonedDateTime creationDateTo;
+    private SearchMode searchMode = SearchMode.OR;
 
-    // Search mode: AND or OR for advanced search
-    private String searchMode; // "AND" or "OR", default "AND"
+    public enum SearchMode {
+        AND, OR
+    }
 }

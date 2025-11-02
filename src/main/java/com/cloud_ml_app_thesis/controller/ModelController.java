@@ -4,6 +4,7 @@ import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.model.ModelDTO;
 import com.cloud_ml_app_thesis.dto.request.model.ModelFinalizeRequest;
 import com.cloud_ml_app_thesis.dto.request.model.ModelUpdateRequest;
+import com.cloud_ml_app_thesis.dto.request.model.UpdateModelContentRequest;
 import com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.entity.User;
@@ -16,6 +17,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
@@ -236,6 +238,29 @@ public class ModelController {
         return ResponseEntity.ok(new GenericResponse<>(null, null, "Model updated successfully", null));
     }
 
+    @Operation(
+            summary = "Update model content",
+            description = "Replaces the model's training and content with results from a new training (owner only). " +
+                    "This allows you to 'upgrade' a model to use better training results while keeping the same model ID and metadata."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Model content updated successfully"),
+            @ApiResponse(responseCode = "404", description = "Model or training not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied - not owner of model or training"),
+            @ApiResponse(responseCode = "400", description = "Training not completed or already used by another model")
+    })
+    @PatchMapping("/{modelId}/content")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<GenericResponse<Void>> updateModelContent(
+            @PathVariable Integer modelId,
+            @Valid @RequestBody UpdateModelContentRequest request,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        log.info("Updating model content: modelId={}, newTrainingId={}, user={}",
+                modelId, request.getNewTrainingId(), accountDetails.getUsername());
+        modelService.updateModelContent(modelId, request.getNewTrainingId(), accountDetails.getUser());
+        return ResponseEntity.ok(new GenericResponse<>(null, null, "Model content updated successfully", null));
+    }
+
     @Operation(summary = "Delete model", description = "Deletes a model (owner only)")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Model deleted successfully"),
@@ -259,7 +284,7 @@ public class ModelController {
     @PostMapping("/search")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<ModelDTO>> searchModels(
-            @RequestBody ModelSearchRequest request,
+            @Valid @RequestBody ModelSearchRequest request,
             @AuthenticationPrincipal AccountDetails accountDetails) {
         log.info("Searching models for user={}", accountDetails.getUsername());
         List<ModelDTO> models = modelService.searchModels(request, accountDetails.getUser());

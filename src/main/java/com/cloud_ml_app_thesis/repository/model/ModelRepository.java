@@ -31,10 +31,12 @@ public interface ModelRepository extends JpaRepository<Model, Integer> {
 
     @Query("""
             SELECT DISTINCT m FROM Model m
-            JOIN m.keywords k
-            WHERE k.name IN :keywords
+            WHERE EXISTS (
+                SELECT 1 FROM m.keywords k
+                WHERE k IN :keywords
+            )
             """)
-            List<Model> findByKeywords(@Param("keywords") Set<String> keywords);
+    List<Model> findByKeywords(@Param("keywords") Set<String> keywords);
 
     Optional<Model> findByTraining(Training training);
 

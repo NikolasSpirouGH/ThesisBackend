@@ -6,6 +6,7 @@ import com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO;
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmCreateRequest;
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmSearchRequest;
 import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmUpdateRequest;
+import com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest;
 import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.accessibility.CustomAlgorithmAccessibility;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
@@ -14,6 +15,7 @@ import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.AlgorithmImageRepository;
 import com.cloud_ml_app_thesis.repository.CustomAlgorithmRepository;
 import com.cloud_ml_app_thesis.repository.accessibility.AlgorithmAccessibilityRepository;
+import com.cloud_ml_app_thesis.util.DateUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.oauth2.sdk.Request;
@@ -48,6 +50,8 @@ public class CustomAlgorithmService {
     private final ModelMapper modelMapper;
 
     private final BucketResolver bucketResolver;
+
+    private final DateUtil dateUtil;
 
     private final AlgorithmImageRepository algorithmImageRepository;
 
@@ -228,9 +232,8 @@ public class CustomAlgorithmService {
             boolean searchMatch = algorithm.getName().toLowerCase().contains(searchInput)
                 || (algorithm.getDescription() != null && algorithm.getDescription().toLowerCase().contains(searchInput))
                 || algorithm.getKeywords().stream().anyMatch(k -> k.toLowerCase().contains(searchInput))
-                || algorithm.getAccessibility().getName().name().toLowerCase().equals(searchInput)
-                || algorithm.getCreatedAt().toString().toLowerCase().contains(searchInput);
-            matches.add(searchMatch);;
+                || algorithm.getAccessibility().getName().name().toLowerCase().equals(searchInput) ;
+            matches.add(searchMatch);
         }
 
         // Advanced Search - name AND description
@@ -247,27 +250,49 @@ public class CustomAlgorithmService {
             log.info("  ➜ Description '{}' match: {}", request.getDescription(), descMatch);
         }
 
-        // Date range filter - FROM
-        if(StringUtils.isNotBlank(request.getCreatedAtFrom()) && !request.getCreatedAtFrom().equalsIgnoreCase("string")) {
-            try {
-                LocalDateTime from = parseDateTime(request.getCreatedAtFrom(), true);
-                boolean fromMatch = algorithm.getCreatedAt().isAfter(from) || algorithm.getCreatedAt().isEqual(from);
-                matches.add(fromMatch);
-                log.info("  ➜ CreatedAtFrom '{}' match: {} (algo date: {})", request.getCreatedAtFrom(), fromMatch, algorithm.getCreatedAt());
-            } catch (Exception e) {
-                log.warn("Invalid createdAtFrom format: {}", request.getCreatedAtFrom());
-            }
-        }
+        // Date range filter - combine FROM and TO with AND logic
+        boolean hasDateFrom = StringUtils.isNotBlank(request.getCreatedAtFrom()) && !request.getCreatedAtFrom().equalsIgnoreCase("string");
+        boolean hasDateTo = StringUtils.isNotBlank(request.getCreatedAtTo()) && !request.getCreatedAtTo().equalsIgnoreCase("string");
 
-        // Date range filter - TO
-        if(StringUtils.isNotBlank(request.getCreatedAtTo()) && !request.getCreatedAtTo().equalsIgnoreCase("string")) {
-            try {
-                LocalDateTime to = parseDateTime(request.getCreatedAtTo(), false);
-                boolean toMatch = algorithm.getCreatedAt().isBefore(to) || algorithm.getCreatedAt().isEqual(to);
-                matches.add(toMatch);
-                log.info("  ➜ CreatedAtTo '{}' match: {} (algo date: {})", request.getCreatedAtTo(), toMatch, algorithm.getCreatedAt());
-            } catch (Exception e) {
-                log.warn("Invalid createdAtTo format: {}", request.getCreatedAtTo());
+        if(hasDateFrom || hasDateTo) {
+            if(algorithm.getCreatedAt() == null) {
+                // If createdAt is null, date filter always fails
+                matches.add(false);
+                log.info("  ➜ Date range match: false (algorithm createdAt is null)");
+            } else {
+                LocalDateTime createdAt = algorithm.getCreatedAt();
+                boolean dateMatch = true;
+
+                // Check FROM date
+                if(hasDateFrom) {
+                    try {
+                        LocalDateTime from = dateUtil.parseDateTime(request.getCreatedAtFrom(), true);
+                        boolean fromMatch = createdAt.isAfter(from) || createdAt.isEqual(from);
+                        dateMatch = dateMatch && fromMatch;
+                        log.info("  ➜ CreatedAtFrom '{}' match: {} (algo date: {})",
+                                request.getCreatedAtFrom(), fromMatch, algorithm.getCreatedAt());
+                    } catch (Exception e) {
+                        log.warn("Invalid createdAtFrom format: {}", request.getCreatedAtFrom(), e);
+                        dateMatch = false;
+                    }
+                }
+
+                // Check TO date
+                if(hasDateTo) {
+                    try {
+                        LocalDateTime to = dateUtil.parseDateTime(request.getCreatedAtTo(), false);
+                        boolean toMatch = createdAt.isBefore(to) || createdAt.isEqual(to);
+                        dateMatch = dateMatch && toMatch;
+                        log.info("  ➜ CreatedAtTo '{}' match: {} (algo date: {})",
+                                request.getCreatedAtTo(), toMatch, algorithm.getCreatedAt());
+                    } catch (Exception e) {
+                        log.warn("Invalid createdAtTo format: {}", request.getCreatedAtTo(), e);
+                        dateMatch = false;
+                    }
+                }
+
+                matches.add(dateMatch);
+                log.info("  ➜ Date range overall match: {}", dateMatch);
             }
         }
         if(matches.isEmpty()){
@@ -276,11 +301,9 @@ public class CustomAlgorithmService {
 
         log.info("matches found: {}",matches.stream().allMatch(Boolean::booleanValue));
 
-        boolean result = request.getSearchMode() == CustomAlgorithmSearchRequest.SearchMode.AND
+        return request.getSearchMode() == CustomAlgorithmSearchRequest.SearchMode.AND
                 ? matches.stream().allMatch(Boolean::booleanValue)
                 : matches.stream().anyMatch(Boolean::booleanValue);
-
-        return result;
     }
 
 
@@ -354,24 +377,6 @@ public class CustomAlgorithmService {
         log.info("Algorithm deleted successfully: id={}, name={}", id, algorithm.getName());
     }
 
-    /**
-     * Parse date/datetime string to LocalDateTime.
-     * Supports both date-only format (YYYY-MM-DD) and full datetime format.
-     *
-     * @param dateString the date or datetime string to parse
-     * @param isStartOfDay if true and date-only format, returns start of day (00:00:00);
-     *                     if false and date-only format, returns end of day (23:59:59.999999999)
-     * @return parsed LocalDateTime
-     */
-    private LocalDateTime parseDateTime(String dateString, boolean isStartOfDay) {
-        try {
-            // Try parsing as date-only format (YYYY-MM-DD)
-            LocalDate date = LocalDate.parse(dateString);
-            return isStartOfDay ? date.atStartOfDay() : date.atTime(23, 59, 59, 999999999);
-        } catch (Exception e1) {
-            // If that fails, try parsing as full LocalDateTime
-            return LocalDateTime.parse(dateString);
-        }
-    }
+
 
 }
