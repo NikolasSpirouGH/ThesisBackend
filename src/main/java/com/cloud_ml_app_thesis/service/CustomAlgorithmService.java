@@ -13,6 +13,7 @@ import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.exception.BadRequestException;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.AlgorithmImageRepository;
+import com.cloud_ml_app_thesis.repository.CustomAlgorithmConfigurationRepository;
 import com.cloud_ml_app_thesis.repository.CustomAlgorithmRepository;
 import com.cloud_ml_app_thesis.repository.accessibility.AlgorithmAccessibilityRepository;
 import com.cloud_ml_app_thesis.util.DateUtil;
