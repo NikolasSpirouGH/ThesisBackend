@@ -47,6 +47,7 @@ import weka.core.Instance;
 import weka.core.Instances;
 
 
+import javax.print.DocFlavor;
 import java.awt.geom.Point2D;
 import java.io.*;
 import java.net.URI;
@@ -535,11 +536,56 @@ public class ModelService {
 
         Model model = modelRepository.findById(modelId)
                 .orElseThrow(() -> new EntityNotFoundException("Model not found"));
+        Training training = model.getTraining();
 
-        if (!model.getTraining().getUser().getUsername().equals(user.getUsername())) {
+        // Check ownership BEFORE breaking relationships
+        if (training == null) {
+            log.warn("⚠️ Model {} has no associated training, cannot verify ownership", modelId);
+            throw new IllegalStateException("Model has no associated training");
+        }
+
+        if (!training.getUser().getUsername().equals(user.getUsername())) {
+            log.warn("⛔ Access denied: User {} tried to delete model {} owned by {}",
+                    user.getUsername(), modelId, training.getUser().getUsername());
             throw new AccessDeniedException("You do not own this model");
         }
 
+        // Now break bidirectional relationship (after ownership check)
+        training.setModel(null);
+        model.setTraining(null);
+
+        // Clear related collections to avoid cascade issues
+        if(model.getShares() != null) {
+            model.getShares().clear();
+        }
+        if(model.getExecutions() != null) {
+            model.getExecutions().clear();
+        }
+
+        String modelUrl = model.getModelUrl();
+
+        if (StringUtils.isNotBlank(modelUrl)) {
+            try {
+                String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
+                String modelKey = minioService.extractMinioKey(modelUrl);
+                minioService.deleteObject(modelBucket, modelKey);
+                log.info("🗑️ Deleted model artifact from MinIO: {}/{}", modelBucket, modelKey);
+            } catch (Exception e) {
+                log.warn("⚠️ Failed to delete model object from MinIO for model {}: {}", model.getId(), e.getMessage(), e);
+            }
+        }
+
+        String metricsUrl = model.getMetricsUrl();
+        if (StringUtils.isNotBlank(metricsUrl)) {
+            try {
+                String metricsBucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
+                String metricsKey = minioService.extractMinioKey(metricsUrl);
+                minioService.deleteObject(metricsBucket, metricsKey);
+                log.info("🗑️ Deleted metrics artifact from MinIO: {}/{}", metricsBucket, metricsKey);
+            } catch (Exception e) {
+                log.warn("⚠️ Failed to delete metrics object from MinIO for model {}: {}", model.getId(), e.getMessage(), e);
+            }
+        }
         modelRepository.delete(model);
         log.info("✅ Model with ID={} deleted successfully", modelId);
     }
@@ -654,5 +700,6 @@ public class ModelService {
                 ? matches.stream().allMatch(Boolean::booleanValue)
                 : matches.stream().anyMatch(Boolean::booleanValue);
     }
+
 
 }

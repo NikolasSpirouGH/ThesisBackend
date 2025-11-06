@@ -179,14 +179,27 @@ public class MinioService {
         }
 
         try {
-            // Remove protocol and host
-            String path = new java.net.URL(minioUrl).getPath(); // /bucketName/objectKey
-            String[] parts = path.split("/", 3); // ["", "bucketName", "objectKey"]
-            if (parts.length < 3) {
-                throw new IllegalArgumentException("Invalid MinIO URL format: " + minioUrl);
+            // Check if it's a full URL with protocol
+            if (minioUrl.startsWith("http://") || minioUrl.startsWith("https://")) {
+                // Remove protocol and host
+                String path = new java.net.URL(minioUrl).getPath(); // /bucketName/objectKey
+                String[] parts = path.split("/", 3); // ["", "bucketName", "objectKey"]
+                if (parts.length < 3) {
+                    throw new IllegalArgumentException("Invalid MinIO URL format: " + minioUrl);
+                }
+                return parts[2]; // objectKey
+            } else {
+                // It's already just a path like "bucketName/objectKey" or "objectKey"
+                // Extract the object key (everything after the first slash, or the whole string if no slash)
+                if (minioUrl.contains("/")) {
+                    int firstSlash = minioUrl.indexOf("/");
+                    return minioUrl.substring(firstSlash + 1); // objectKey
+                } else {
+                    // No bucket prefix, return as-is
+                    return minioUrl;
+                }
             }
-            return parts[2]; // objectKey
-        } catch (Exception e) {
+        } catch (java.net.MalformedURLException e) {
             throw new RuntimeException("Failed to extract key from MinIO URL: " + minioUrl, e);
         }
     }

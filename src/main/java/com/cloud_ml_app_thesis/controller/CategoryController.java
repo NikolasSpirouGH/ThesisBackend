@@ -4,10 +4,13 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+
+import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -61,8 +64,18 @@ public class CategoryController {
             @ApiResponse(responseCode = "403", description = "Forbidden - Admin only")
     })
     @GetMapping("/requests/pending")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CATEGORY_MANAGER')")
-    public ResponseEntity<GenericResponse<?>> getPendingCategoryRequests() {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<GenericResponse<?>> getPendingCategoryRequests(@AuthenticationPrincipal AccountDetails accountDetails) {
+        boolean isAdminOrManager = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
+                               || auth.getAuthority().equals("ROLE_ADMIN")
+                               || auth.getAuthority().equals("CATEGORY_MANAGER")
+                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+
+        if (!isAdminOrManager) {
+            throw new AccessDeniedException("Admin or Category Manager access required");
+        }
+
         GenericResponse<?> response = categoryService.getPendingCategoryRequests();
         return ResponseEntity.ok(response);
     }
@@ -73,8 +86,18 @@ public class CategoryController {
             @ApiResponse(responseCode = "403", description = "Forbidden - Admin only")
     })
     @GetMapping("/requests/all")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CATEGORY_MANAGER')")
-    public ResponseEntity<GenericResponse<?>> getAllCategoryRequests() {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<GenericResponse<?>> getAllCategoryRequests(@AuthenticationPrincipal AccountDetails accountDetails) {
+        boolean isAdminOrManager = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
+                               || auth.getAuthority().equals("ROLE_ADMIN")
+                               || auth.getAuthority().equals("CATEGORY_MANAGER")
+                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+
+        if (!isAdminOrManager) {
+            throw new AccessDeniedException("Admin or Category Manager access required");
+        }
+
         GenericResponse<?> response = categoryService.getAllCategoryRequests();
         return ResponseEntity.ok(response);
     }
@@ -85,11 +108,19 @@ public class CategoryController {
             @ApiResponse(responseCode = "403", description = "Forbidden")
     })
     @DeleteMapping("/{id}/delete")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> deleteCategory(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal AccountDetails accountDetails,
             @Parameter(description = "ID of the category to delete") @PathVariable @Positive Integer id) {
-        String username = userDetails.getUsername();
+
+        boolean isAdmin = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("ROLE_ADMIN"));
+
+        if (!isAdmin) {
+            throw new AccessDeniedException("Admin access required");
+        }
+
+        String username = accountDetails.getUsername();
         categoryService.deleteCategory(username, id);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
@@ -119,11 +150,22 @@ public class CategoryController {
                     content = @Content(schema = @Schema(implementation = CategoryRequestDTO.class)))
     })
     @PostMapping("{requestId}/approve")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CATEGORY_MANAGER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<?>> approveCategoryRequest(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal AccountDetails accountDetails,
             @Parameter(description = "Request ID to approve") @PathVariable @Positive Integer requestId) {
-        String username = userDetails.getUsername();
+
+        boolean isAdminOrManager = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
+                               || auth.getAuthority().equals("ROLE_ADMIN")
+                               || auth.getAuthority().equals("CATEGORY_MANAGER")
+                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+
+        if (!isAdminOrManager) {
+            throw new AccessDeniedException("Admin or Category Manager access required");
+        }
+
+        String username = accountDetails.getUsername();
         GenericResponse<?> approvedRequest = categoryService.approveCategoryRequest(username, requestId);
         return ResponseEntity.ok().body(approvedRequest);
     }
@@ -134,12 +176,23 @@ public class CategoryController {
                     content = @Content(schema = @Schema(implementation = CategoryRequestDTO.class)))
     })
     @PatchMapping("{requestId}/reject")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CATEGORY_MANAGER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<?>> rejectCategoryRequest(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal AccountDetails accountDetails,
             @Parameter(description = "Request ID to reject") @PathVariable @Positive Integer requestId,
             @RequestBody CategoryRejectRequest request) {
-        String username = userDetails.getUsername();
+
+        boolean isAdminOrManager = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
+                               || auth.getAuthority().equals("ROLE_ADMIN")
+                               || auth.getAuthority().equals("CATEGORY_MANAGER")
+                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+
+        if (!isAdminOrManager) {
+            throw new AccessDeniedException("Admin or Category Manager access required");
+        }
+
+        String username = accountDetails.getUsername();
         GenericResponse<CategoryRequestDTO> response = categoryService.rejectCategoryRequest(username, requestId, request.getRejectionReason());
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
@@ -151,17 +204,23 @@ public class CategoryController {
             @ApiResponse(responseCode = "403", description = "Forbidden to modify ID if not admin")
     })
     @PatchMapping("/{id}/update")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CATEGORY_MANAGER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<CategoryDTO>> updateCategory(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal AccountDetails accountDetails,
             @Parameter(description = "ID of the category to update") @PathVariable @Positive Integer id,
             @Valid @RequestBody CategoryUpdateRequest request) {
 
-        String username = userDetails.getUsername();
-        List<String> userRoles = userDetails.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .toList();
+        boolean isAdminOrManager = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
+                               || auth.getAuthority().equals("ROLE_ADMIN")
+                               || auth.getAuthority().equals("CATEGORY_MANAGER")
+                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
 
+        if (!isAdminOrManager) {
+            throw new AccessDeniedException("Admin or Category Manager access required");
+        }
+
+        String username = accountDetails.getUsername();
         GenericResponse<CategoryDTO> response = categoryService.updateCategory(username, id, request);
         return ResponseEntity.ok(response);
     }

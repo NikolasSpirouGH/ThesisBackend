@@ -12,35 +12,35 @@ VALUES
    'Optimized logistic regression for binary classification',
    1, -- PUBLIC
    '2024-01-15 10:30:00',
-   (SELECT id FROM users WHERE username = 'alice' LIMIT 1)),
+   (SELECT id FROM users WHERE username = 'bigspy' LIMIT 1)),
 
   -- Algorithm 2: Mid 2024 (June 20, 2024)
   ('Decision Tree Pruner',
    'Automated decision tree with intelligent pruning',
    2, -- PRIVATE
    '2024-06-20 14:45:00',
-   (SELECT id FROM users WHERE username = 'bob' LIMIT 1)),
+   (SELECT id FROM users WHERE username = 'nickriz' LIMIT 1)),
 
   -- Algorithm 3: Recent past (Sept 10, 2025)
   ('Transformer NLP Model',
    'Advanced transformer model for natural language processing',
    1, -- PUBLIC
    '2025-09-10 09:15:00',
-   (SELECT id FROM users WHERE username = 'charlie' LIMIT 1)),
+   (SELECT id FROM users WHERE username = 'johnken' LIMIT 1)),
 
   -- Algorithm 4: Last week (Oct 19, 2025)
   ('AutoEncoder Compressor',
    'Neural network autoencoder for data compression',
    2, -- PRIVATE
    '2025-10-19 16:20:00',
-   (SELECT id FROM users WHERE username = 'diana' LIMIT 1)),
+   (SELECT id FROM users WHERE username = 'bigspy' LIMIT 1)),
 
   -- Algorithm 5: Very recent (Oct 25, 2025)
   ('GAN Image Generator',
    'Generative Adversarial Network for synthetic image generation',
    1, -- PUBLIC
    '2025-10-25 11:00:00',
-   (SELECT id FROM users WHERE username = 'eve' LIMIT 1));
+   (SELECT id FROM users WHERE username = 'nickriz' LIMIT 1));
 
 -- Insert keywords for these algorithms
 INSERT INTO custom_algorithm_keywords (algorithm_id, keyword)

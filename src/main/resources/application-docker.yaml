@@ -48,7 +48,6 @@ minio:
     metrics: ${MINIO_BUCKET_METRICS}
     parameters: ${MINIO_BUCKET_PARAMETERS}
 
-
 logging:
   level:
     root: INFO
