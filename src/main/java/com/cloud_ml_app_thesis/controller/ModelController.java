@@ -267,7 +267,7 @@ public class ModelController {
             @ApiResponse(responseCode = "404", description = "Model not found"),
             @ApiResponse(responseCode = "403", description = "Access denied - not owner")
     })
-    @DeleteMapping("/{modelId}")
+    @DeleteMapping("/delete/{modelId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<Void>> deleteModel(
             @PathVariable Integer modelId,

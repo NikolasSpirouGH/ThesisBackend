@@ -1,7 +1,9 @@
 package com.cloud_ml_app_thesis.controller;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +29,7 @@ import jakarta.validation.Valid;
 
 @Tag(name = "User Management", description = "Endpoints for managing users")
 @RestController
+@Slf4j
 @RequestMapping("/api/users")
 public class UserController {
 
@@ -50,8 +53,20 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Forbidden - Admin only")
     })
     @GetMapping("/all")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<GenericResponse<?>> getAllUsers() {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<GenericResponse<?>> getAllUsers(@AuthenticationPrincipal AccountDetails accountDetails) {
+        log.info("🔐 getAllUsers called by user: {}, authorities: {}",
+                accountDetails.getUsername(),
+                accountDetails.getAuthorities());
+
+        boolean isAdmin = accountDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("ROLE_ADMIN"));
+
+        if (!isAdmin) {
+            log.warn("⛔ Access denied: User {} is not admin", accountDetails.getUsername());
+            throw new AccessDeniedException("Admin access required");
+        }
+
         return ResponseEntity.ok(userService.getAllUsers());
     }
 

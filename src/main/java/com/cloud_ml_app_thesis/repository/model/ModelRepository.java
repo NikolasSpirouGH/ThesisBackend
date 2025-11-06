@@ -56,4 +56,6 @@ public interface ModelRepository extends JpaRepository<Model, Integer> {
             WHERE m.id = :modelId
             """)
     Optional<Model> findByIdWithTrainingDetails(@Param("modelId") Integer modelId);
+
+    Model findByName(String name);
 }
