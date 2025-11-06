@@ -249,7 +249,7 @@ public class ModelController {
             @ApiResponse(responseCode = "403", description = "Access denied - not owner of model or training"),
             @ApiResponse(responseCode = "400", description = "Training not completed or already used by another model")
     })
-    @PatchMapping("/{modelId}/content")
+    @PatchMapping("/updateContent/{modelId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<Void>> updateModelContent(
             @PathVariable Integer modelId,
