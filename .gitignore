@@ -4,6 +4,9 @@
 *.log
 *.json
 *.tar
+.csv
+.xls
+.xlsx
 .venv/
 venv/
 *:Zone.Identifier
