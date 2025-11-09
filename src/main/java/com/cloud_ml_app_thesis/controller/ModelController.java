@@ -173,7 +173,7 @@ public class ModelController {
             @ApiResponse(responseCode = "404", description = "Training or category not found",
                     content = @Content)
     })
-    @PostMapping("/{modelId}/model")
+    @PostMapping("/finalize/{modelId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<Integer>> finalizeModelFromTraining(
             @PathVariable Integer modelId,
@@ -200,7 +200,7 @@ public class ModelController {
         ByteArrayResource model = modelService.downloadModel(trainingId, accountDetails.getUser());
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + accountDetails.getUser().getUsername() + "_" + "model" + trainingId + "pkl")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + accountDetails.getUser().getUsername() + "_" + "model" + trainingId + ".pkl")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .contentLength(model.contentLength())
                 .body(model);
@@ -227,7 +227,7 @@ public class ModelController {
             @ApiResponse(responseCode = "404", description = "Model not found"),
             @ApiResponse(responseCode = "403", description = "Access denied - not owner")
     })
-    @PutMapping("/{modelId}")
+    @PutMapping("/update/{modelId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<Void>> updateModel(
             @PathVariable Integer modelId,

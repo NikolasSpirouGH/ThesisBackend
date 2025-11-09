@@ -184,7 +184,7 @@ public class CustomPredictionService {
             execution.setExecutedByUser(user);
             execution.setDataset(model.getTraining().getDatasetConfiguration().getDataset());
             execution.setExecutedAt(ZonedDateTime.now());
-            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS)
+            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.RUNNING)
                     .orElseThrow(() -> new EntityNotFoundException("Execution status not found")));
             modelExecutionRepository.save(execution);
             entityManager.detach(execution);
@@ -214,7 +214,7 @@ public class CustomPredictionService {
                 ModelExecution exec = modelExecutionRepository.findById(executionId)
                         .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
                 exec.setPredictionResult(finalResultUrl);
-                exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FINISHED).orElseThrow());
+                exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.COMPLETED).orElseThrow());
                 modelExecutionRepository.saveAndFlush(exec);
             });
 
@@ -240,7 +240,7 @@ public class CustomPredictionService {
             taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
 
             ModelExecutionStatusEnum finalStatus = complete
-                    ? ModelExecutionStatusEnum.FINISHED
+                    ? ModelExecutionStatusEnum.COMPLETED
                     : ModelExecutionStatusEnum.FAILED;
 
             // Update execution status in separate transaction

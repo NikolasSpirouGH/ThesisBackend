@@ -119,6 +119,10 @@ public class ModelService {
         if (!model.getTraining().getStatus().getName().toString().equalsIgnoreCase("COMPLETED")) {
             throw new IllegalStateException("Training must be completed before finalizing a model.");
         }
+
+        if(!model.getStatus().getName().toString().equalsIgnoreCase("FINISHED")) {
+            throw new IllegalStateException("Model must be finished before finalizing a model.");
+        }
         Training training = model.getTraining();
 
         if (model == null) {
@@ -173,10 +177,11 @@ public class ModelService {
                 .findByName("Default")
                 .orElseThrow(() -> new EntityNotFoundException("Could not find default category"));
         Model model = new Model();
+        model.setName(null);
         model.setTraining(training);
         model.setModelUrl(modelUrl);
         model.setMetricsUrl(metricsUrl);
-        model.setStatus(modelStatusRepository.findByName(ModelStatusEnum.IN_PROGRESS)
+        model.setStatus(modelStatusRepository.findByName(ModelStatusEnum.FINISHED)
                 .orElseThrow(() -> new EntityNotFoundException("Could not find IN_PROGRESS model status")));
         model.setModelType(modelType);
         //ZonedDateTime finishedZoned = training.getFinishedDate().withZoneSameInstant(ZoneId.of("Europe/Athens"));

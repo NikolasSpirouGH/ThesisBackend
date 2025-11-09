@@ -98,6 +98,12 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<GenericResponse<?>> handleIllegalStateException(IllegalStateException ex) {
+        GenericResponse<?> errorResponse = new GenericResponse<>(null, "ILLEGAL_STATE", "File processing error", new Metadata());
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(UserInitiatedStopException.class)
     public ResponseEntity<GenericResponse<?>> handleUserInitiatedStop(UserInitiatedStopException ex) {
         GenericResponse<?> errorResponse = new GenericResponse<>(null, "410", "Training was stopped by the user", new Metadata());

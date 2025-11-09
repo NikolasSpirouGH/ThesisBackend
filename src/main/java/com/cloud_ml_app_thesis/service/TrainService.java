@@ -75,6 +75,8 @@ import weka.classifiers.Classifier;
 import weka.clusterers.Clusterer;
 import weka.core.Instances;
 import weka.core.Utils;
+import weka.filters.Filter;
+import weka.filters.unsupervised.attribute.NumericToNominal;
 
 @Service
 @RequiredArgsConstructor
@@ -147,6 +149,24 @@ public class TrainService {
             int testSize = data.numInstances() - trainSize;
             Instances trainData = new Instances(data, 0, trainSize);
             Instances testData = new Instances(data, trainSize, testSize);
+
+            // 🔄 Convert numeric class to nominal for classification algorithms
+            if (isClassifier && data.classIndex() >= 0 && data.classAttribute().isNumeric()) {
+                log.info("🔄 Converting numeric class to nominal for classification algorithm");
+                log.info("   Class attribute: {} (numeric)", data.classAttribute().name());
+
+                NumericToNominal convert = new NumericToNominal();
+                String classIndexStr = String.valueOf(data.classIndex() + 1); // Weka uses 1-based indexing for filters
+                convert.setAttributeIndices(classIndexStr);
+                convert.setInputFormat(data);
+
+                // Apply filter to all datasets
+                data = Filter.useFilter(data, convert);
+                trainData = Filter.useFilter(trainData, convert);
+                testData = Filter.useFilter(testData, convert);
+
+                log.info("✅ Converted class to nominal. Values: {}", data.classAttribute().toString());
+            }
 
             String fixedRawOptions = AlgorithmUtil.fixNestedOptions(config.getOptions());
             AlgorithmType algorithmType;
@@ -293,14 +313,11 @@ public class TrainService {
         }catch (Exception e) {
             log.error("❌ Training failed [taskId={}]: {}", taskId, e.getMessage(), e);
 
-            // Task -> FAILED (η μέθοδος στο service να είναι REQUIRES_NEW + saveAndFlush)
             taskStatusService.taskFailed(taskId, e.getMessage());
 
-            // για να μην «γκρινιάζει» ο compiler μέσα στο lambda, πάρε ένα final alias
             final Integer tid = trainingId;
 
             if (tid != null) {
-                // Training -> FAILED (REQUIRES_NEW + fresh read)
                 transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
                 transactionTemplate.executeWithoutResult(status -> {
                     Training tr = trainingRepository.findById(tid)
@@ -312,7 +329,6 @@ public class TrainService {
                     trainingRepository.saveAndFlush(tr);
                 });
 
-                // attach trainingId στο Task (REQUIRES_NEW)
                 transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
                 transactionTemplate.executeWithoutResult(status -> {
                     var t = taskStatusRepository.findById(taskId).orElseThrow();
@@ -389,7 +405,8 @@ public class TrainService {
                                 .map(DatasetConfiguration::getDataset)
                                 .map(Dataset::getFileName)
                                 .orElse("Unknown"),
-                        training.getModel() != null ? training.getModel().getId() : null
+                        training.getModel() != null ? training.getModel().getId() : null,
+                        training.getUser() != null ? training.getUser().getUsername() : "Unknown"
                 ))
                 .collect(Collectors.toList());
     }
@@ -444,7 +461,8 @@ public class TrainService {
                                 .map(DatasetConfiguration::getDataset)
                                 .map(Dataset::getFileName)
                                 .orElse("Unknown"),
-                        training.getModel() != null ? training.getModel().getId() : null
+                        training.getModel() != null ? training.getModel().getId() : null,
+                        training.getUser() != null ? training.getUser().getUsername() : "Unknown"
                 ))
                 .toList();
     }

@@ -266,7 +266,20 @@ public class CustomTrainingService {
 
             Path datasetInside = dataDir.resolve("dataset.csv");
 
-            Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
+            // Check if the dataset is an Excel file and convert to CSV if needed
+            String datasetFileName = datasetPath.getFileName().toString().toLowerCase();
+            if (datasetFileName.endsWith(".xls") || datasetFileName.endsWith(".xlsx")) {
+                log.info("📊 Detected Excel file, converting to CSV for Docker container...");
+                String csvPath = com.cloud_ml_app_thesis.util.XlsToCsv.convertExcelToCsv(
+                    Files.newInputStream(datasetPath),
+                    datasetFileName
+                );
+                Files.copy(Path.of(csvPath), datasetInside, StandardCopyOption.REPLACE_EXISTING);
+                // Clean up temp CSV file
+                Files.deleteIfExists(Path.of(csvPath));
+            } else {
+                Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
+            }
             if (!Files.exists(datasetInside)) {
                 throw new IllegalStateException("❌ dataset.csv does not exist before starting container!");
             }

@@ -48,8 +48,8 @@ public class WekaServiceTrainingIT {
     @Autowired
     private UserRepository userRepository;
 
-    private static final Integer WEKA_ALGORITHM_ID = 67;
-    private static final String TRAINING_FILE_PATH = "/app/src/test/resources/datasets/SimpleKmeans/Clustering_-_Prediction__clustering_predict_csv_.csv";
+    private static final Integer WEKA_ALGORITHM_ID = 25;
+    private static final String TRAINING_FILE_PATH = "/app/src/test/resources/datasets/Linear_Regression/default of credit card clients.xls";
     private static final String TEST_USERNAME = "bigspy";
 
     @Test
@@ -62,26 +62,22 @@ public class WekaServiceTrainingIT {
         System.out.println("Testing Weka training with algorithm ID: " + WEKA_ALGORITHM_ID);
         System.out.println("Using file: " + trainingFile.getAbsolutePath());
 
-        // Verify algorithm exists
         var algorithm = algorithmRepository.findById(WEKA_ALGORITHM_ID)
                 .orElseThrow(() -> new RuntimeException("Algorithm not found: " + WEKA_ALGORITHM_ID));
 
         System.out.println("Algorithm found: " + algorithm.getName());
         System.out.println("Algorithm class: " + algorithm.getClassName());
 
-        // Get real user from database (not a detached entity)
         User testUser = userRepository.findByUsername(TEST_USERNAME)
                 .orElseThrow(() -> new RuntimeException("User not found: " + TEST_USERNAME));
 
-        // Convert file to MultipartFile
         MultipartFile multipartFile = new MockMultipartFile(
                 "file",
                 trainingFile.getName(),
-                "text/csv",
+                "application/vnd.ms-excel",
                 new FileInputStream(trainingFile)
         );
 
-        // Create TrainingStartRequest (same as production)\
         TrainingStartRequest request = new TrainingStartRequest();
         request.setFile(multipartFile);
         request.setAlgorithmId(String.valueOf(WEKA_ALGORITHM_ID));
@@ -89,15 +85,12 @@ public class WekaServiceTrainingIT {
         request.setTargetClassColumn(null);
         request.setOptions(null);
 
-        // Execute training using orchestrator (just like production does)
         System.out.println("Executing training via orchestrator...");
 
         try {
-            // This mimics the full production flow
             String taskId = trainingOrchestrator.handleTrainingRequest(request, testUser);
             System.out.println("Training started with taskId: " + taskId);
 
-            // Wait for async execution to complete
             int maxAttempts = 30;
             int delayMs = 3000;
             boolean completed = false;

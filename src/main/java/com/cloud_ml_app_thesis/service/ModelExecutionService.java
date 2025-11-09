@@ -53,6 +53,8 @@ import weka.clusterers.Clusterer;
 import weka.core.Attribute;
 import weka.core.Instance;
 import weka.core.Instances;
+import weka.filters.Filter;
+import weka.filters.unsupervised.attribute.NumericToNominal;
 
 @Service
 @RequiredArgsConstructor
@@ -131,6 +133,23 @@ public class ModelExecutionService {
 
             log.info("✅ Parsed prediction dataset with {} instances and {} attributes", predictInstances.numInstances(), predictInstances.numAttributes());
 
+            // 🔄 Convert numeric class to nominal for classification algorithms (if needed)
+            if (algorithmType.getName() == com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum.CLASSIFICATION
+                && predictInstances.classIndex() >= 0
+                && predictInstances.classAttribute().isNumeric()) {
+
+                log.info("🔄 Converting numeric class to nominal for classification prediction");
+                log.info("   Class attribute: {} (numeric)", predictInstances.classAttribute().name());
+
+                NumericToNominal convert = new NumericToNominal();
+                String classIndexStr = String.valueOf(predictInstances.classIndex() + 1);
+                convert.setAttributeIndices(classIndexStr);
+                convert.setInputFormat(predictInstances);
+                predictInstances = Filter.useFilter(predictInstances, convert);
+
+                log.info("✅ Converted class to nominal for prediction. Values: {}", predictInstances.classAttribute().toString());
+            }
+
             // ⬇️ 2. Φόρτωσε το εκπαιδευμένο μοντέλο
             Object modelObject = modelService.loadModel(model.getModelUrl());
             log.info("✅ Loaded model: {}", modelObject.getClass().getSimpleName());
@@ -153,7 +172,7 @@ public class ModelExecutionService {
             execution.setExecutedByUser(user);
             execution.setDataset(config.getDataset());
             execution.setExecutedAt(ZonedDateTime.now());
-            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS).orElseThrow());
+            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.RUNNING).orElseThrow());
             modelExecutionRepository.save(execution);
             entityManager.detach(execution);
 
@@ -192,7 +211,7 @@ public class ModelExecutionService {
                 ModelExecution exec = modelExecutionRepository.findById(executionId)
                         .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
                 exec.setPredictionResult(finalMinioUrl);
-                exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FINISHED).orElseThrow());
+                exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.COMPLETED).orElseThrow());
                 modelExecutionRepository.saveAndFlush(exec);
             });
 
@@ -218,7 +237,7 @@ public class ModelExecutionService {
             taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
 
             ModelExecutionStatusEnum finalStatus = complete
-                    ? ModelExecutionStatusEnum.FINISHED
+                    ? ModelExecutionStatusEnum.COMPLETED
                     : ModelExecutionStatusEnum.FAILED;
 
             // Update execution status in separate transaction
@@ -298,7 +317,7 @@ public class ModelExecutionService {
             execution.setExecutedByUser(user);
             execution.setDataset(datasetConfiguration.getDataset());
             execution.setExecutedAt(ZonedDateTime.now());
-            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.IN_PROGRESS).orElseThrow());
+            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.RUNNING).orElseThrow());
             modelExecutionRepository.save(execution);
             entityManager.detach(execution);
 
@@ -327,7 +346,7 @@ public class ModelExecutionService {
                 ModelExecution exec = modelExecutionRepository.findById(executionId)
                         .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
                 exec.setPredictionResult(finalResult);
-                exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FINISHED).orElseThrow());
+                exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.COMPLETED).orElseThrow());
                 modelExecutionRepository.saveAndFlush(exec);
             });
 
@@ -353,7 +372,7 @@ public class ModelExecutionService {
             taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
 
             ModelExecutionStatusEnum finalStatus = complete
-                    ? ModelExecutionStatusEnum.FINISHED
+                    ? ModelExecutionStatusEnum.COMPLETED
                     : ModelExecutionStatusEnum.FAILED;
 
             // Update execution status in separate transaction
@@ -517,6 +536,7 @@ public class ModelExecutionService {
                 .modelId(model.getId())
                 .datasetId(execution.getDataset() != null ? execution.getDataset().getId() : null)
                 .hasResultFile(execution.getPredictionResult() != null && !execution.getPredictionResult().isEmpty())
+                .ownerUsername(execution.getExecutedByUser() != null ? execution.getExecutedByUser().getUsername() : "Unknown")
                 .build();
     }
 

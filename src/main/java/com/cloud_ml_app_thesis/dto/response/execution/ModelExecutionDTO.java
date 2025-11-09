@@ -23,4 +23,5 @@ public class ModelExecutionDTO {
     private Integer modelId;
     private Integer datasetId;
     private boolean hasResultFile;
+    private String ownerUsername;
 }

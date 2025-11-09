@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.controller;
 
+import com.cloud_ml_app_thesis.dto.request.execution.ExecutionUpdateRequest;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -8,13 +9,7 @@ import org.springframework.http.ResponseEntity;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.execution.ExecuteRequest;
@@ -130,8 +125,8 @@ public class ModelExecutionController {
                 .body(resource);
     }
 
-    @DeleteMapping("/{executionId}")
-    @PreAuthorize("hasRole('USER')")
+    @DeleteMapping("/delete/{executionId}")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Delete model execution",
             description = "Deletes a model execution and its associated prediction result file.")
     @ApiResponses(value = {
@@ -156,5 +151,4 @@ public class ModelExecutionController {
                 null
         ));
     }
-
 }

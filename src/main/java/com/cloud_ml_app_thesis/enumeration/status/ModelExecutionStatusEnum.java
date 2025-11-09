@@ -1,6 +1,6 @@
 package com.cloud_ml_app_thesis.enumeration.status;
 
 public enum ModelExecutionStatusEnum {
-    IN_PROGRESS, FINISHED, FAILED, CANCELED
+    PENDING, RUNNING, COMPLETED, FAILED
 
 }

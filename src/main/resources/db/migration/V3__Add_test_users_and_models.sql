@@ -211,7 +211,7 @@ BEGIN
     RETURNING id INTO training_id_1;
 
     INSERT INTO models (training_id, model_type_id, status_id, accessibility_id, model_name, model_description,
-                        data_description, finished_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
+                        data_description, created_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
     VALUES (training_id_1, model_type_id, model_status_id, model_accessibility_public_id,
             'Spam Classification Model',
             'Email spam detection using Naive Bayes classifier',
@@ -232,7 +232,7 @@ BEGIN
     RETURNING id INTO training_id_2;
 
     INSERT INTO models (training_id, model_type_id, status_id, accessibility_id, model_name, model_description,
-                        data_description, finished_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
+                        data_description, created_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
     VALUES (training_id_2, model_type_id, model_status_id, model_accessibility_private_id,
             'Customer Churn Prediction',
             'Predicts customer churn using Random Forest',
@@ -253,7 +253,7 @@ BEGIN
     RETURNING id INTO training_id_3;
 
     INSERT INTO models (training_id, model_type_id, status_id, accessibility_id, model_name, model_description,
-                        data_description, finished_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
+                        data_description, created_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
     VALUES (training_id_3, model_type_id, model_status_id, model_accessibility_public_id,
             'Sentiment Analysis Model',
             'Twitter sentiment classification with SVM',
@@ -274,7 +274,7 @@ BEGIN
     RETURNING id INTO training_id_4;
 
     INSERT INTO models (training_id, model_type_id, status_id, accessibility_id, model_name, model_description,
-                        data_description, finished_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
+                        data_description, created_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
     VALUES (training_id_4, model_type_id, model_status_id, model_accessibility_public_id,
             'Image Classifier CNN',
             'Convolutional Neural Network for image classification',
@@ -295,7 +295,7 @@ BEGIN
     RETURNING id INTO training_id_5;
 
     INSERT INTO models (training_id, model_type_id, status_id, accessibility_id, model_name, model_description,
-                        data_description, finished_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
+                        data_description, created_at, finalized, finalization_date, category_id, version, model_url, metrics_url)
     VALUES (training_id_5, model_type_id, model_status_id, model_accessibility_private_id,
             'Fraud Detection System',
             'Credit card fraud detection using ensemble methods',

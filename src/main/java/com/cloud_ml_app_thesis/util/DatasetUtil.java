@@ -130,17 +130,31 @@ public class DatasetUtil {
     }
 
     public static String csvToArff(InputStream inputStream, String fileReference) {
-        logger.info("▶ Entering csvToArff()");
+        logger.info("▶ Entering csvToArff() for file: {}", fileReference);
         File tempInputFile = null;
         File tempOutputFile = null;
+        File tempCsvFile = null;
+
         try {
-            // Create a temporary file for the input data
-            tempInputFile = File.createTempFile("input", getFileExtension(fileReference));
-            Files.copy(inputStream, tempInputFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            String fileExtension = getFileExtension(fileReference);
+
+            // If it's an Excel file, first convert to CSV
+            if (isExcelFile(fileExtension)) {
+                logger.info("📊 Detected Excel file, converting to CSV first...");
+                String csvPath = XlsToCsv.convertExcelToCsv(inputStream, fileReference);
+                tempCsvFile = new File(csvPath);
+                tempInputFile = tempCsvFile;
+                fileExtension = ".csv";
+                inputStream = Files.newInputStream(tempInputFile.toPath());
+            } else {
+                // Create a temporary file for the input data
+                tempInputFile = File.createTempFile("input", fileExtension);
+                Files.copy(inputStream, tempInputFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
 
             // Determine if the file is CSV or ARFF and load the data accordingly
             Instances data;
-            if (getFileExtension(fileReference).equalsIgnoreCase(".arff")) {
+            if (fileExtension.equalsIgnoreCase(".arff")) {
                 ArffLoader arffLoader = new ArffLoader();
                 arffLoader.setSource(tempInputFile);
                 data = arffLoader.getDataSet();
@@ -149,6 +163,7 @@ public class DatasetUtil {
                 csvLoader.setSource(tempInputFile);
                 data = csvLoader.getDataSet();
             }
+
             // Create a separate temporary file for the ARFF output
             tempOutputFile = File.createTempFile("output", ".arff");
 
@@ -179,11 +194,19 @@ public class DatasetUtil {
         return fileName.substring(lastIndex);
     }
 
+    /**
+     * Check if the file extension is an Excel format
+     */
+    private static boolean isExcelFile(String fileExtension) {
+        return fileExtension.equalsIgnoreCase(".xls") || fileExtension.equalsIgnoreCase(".xlsx");
+    }
+
     public static Instances prepareDataset(MultipartFile file, String filename, DatasetConfiguration datasetConfiguration) throws Exception {
         InputStream datasetStream = file.getInputStream();
         // Convert the dataset to ARFF format if it is in CSV or Excel format
         String fileExtension = getFileExtension(filename);
-        if (fileExtension.equalsIgnoreCase(".csv")) {
+        if (fileExtension.equalsIgnoreCase(".csv") || isExcelFile(fileExtension)) {
+            logger.info("📥 Converting {} file to ARFF format...", fileExtension);
             String arffFilePath = csvToArff(datasetStream, filename);
             datasetStream = Files.newInputStream(Paths.get(arffFilePath));
         }
@@ -201,7 +224,8 @@ public class DatasetUtil {
 
         // Convert the dataset to ARFF format if it is in CSV or Excel format
         String fileExtension = getFileExtension(objectName);
-        if (fileExtension.equalsIgnoreCase(".csv")) {
+        if (fileExtension.equalsIgnoreCase(".csv") || isExcelFile(fileExtension)) {
+            logger.info("📥 Converting {} file from MinIO to ARFF format...", fileExtension);
             String arffFilePath = csvToArff(datasetStream, objectName);
             datasetStream = Files.newInputStream(Paths.get(arffFilePath));
         }

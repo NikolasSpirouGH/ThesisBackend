@@ -22,4 +22,5 @@ public class TrainingDTO {
     private ZonedDateTime finishedDate;
     private String datasetName;
     private Integer modelId;
+    private String ownerUsername;
 }

@@ -40,10 +40,11 @@ ON CONFLICT (name) DO NOTHING;
 -- 4. MODEL STATUSES
 -- ============================================
 INSERT INTO const_model_statuses (name, description) VALUES
-    ('ACTIVE', 'Model is active'),
-    ('INACTIVE', 'Model is inactive'),
-    ('DEPRECATED', 'Model is deprecated'),
-    ('TRAINING', 'Model is being trained')
+    ('REQUESTED', 'Model is requested'),
+    ('FINISHED', 'Model is finished'),
+    ('IN_PROGRESS', 'Model is in progress'),
+    ('FAILED', 'Model is failed'),
+    ('CANCELED', 'Model has been canceled')
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================
@@ -85,9 +86,8 @@ ON CONFLICT (name) DO NOTHING;
 -- 9. MODEL TYPES
 -- ============================================
 INSERT INTO const_model_types (name) VALUES
-    ('CLASSIFICATION'),
-    ('CLUSTERING'),
-    ('REGRESSION')
+    ('CUSTOM'),
+    ('PREDEFINED')
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================
@@ -168,3 +168,6 @@ VALUES (
     false
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- Reset the sequence to avoid conflicts with future inserts
+SELECT setval('categories_id_seq', (SELECT MAX(id) FROM categories));

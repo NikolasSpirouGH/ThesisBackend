@@ -49,8 +49,8 @@ public class WekaServicePredictionIT {
     @Autowired
     private UserRepository userRepository;
 
-    private static final Integer WEKA_MODEL_ID = 11; 
-    private static final String PREDICTION_FILE_PATH = "/app/src/test/resources/datasets/Logistic_Regression/Logistic_Regression_-_Prediction__logreg_predict_csv_.csv"; // Path inside container
+    private static final Integer WEKA_MODEL_ID = 23;
+    private static final String PREDICTION_FILE_PATH = "/app/src/test/resources/datasets/Linear_Regression/default of credit card clients prediction.csv"; // Path inside container
     private static final String TEST_USERNAME = "bigspy";
 
     @Test
