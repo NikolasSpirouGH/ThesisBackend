@@ -1,23 +1,17 @@
 package com.cloud_ml_app_thesis.dto.request.model;
 
-import com.cloud_ml_app_thesis.dto.request.SearchableRequest;
-import com.cloud_ml_app_thesis.dto.request.custom_algorithm.CustomAlgorithmSearchRequest;
-import com.cloud_ml_app_thesis.validation.validation.ValidSearchRequest;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.Set;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ValidSearchRequest
-public class ModelSearchRequest implements SearchableRequest {
+public class ModelSearchRequest {
     // Simple search: keyword that matches any metadata
     private String simpleSearchInput;
 

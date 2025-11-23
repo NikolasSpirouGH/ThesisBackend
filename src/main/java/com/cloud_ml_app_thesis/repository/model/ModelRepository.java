@@ -18,7 +18,7 @@ import java.util.UUID;
 public interface ModelRepository extends JpaRepository<Model, Integer> {
     @Query("""
             SELECT m FROM Model m
-            WHERE m.status.name = 'PUBLIC'
+            WHERE m.accessibility.name = com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum.PUBLIC
             OR m.training.user.id = :userId
             OR EXISTS (
             SELECT s FROM ModelShare s

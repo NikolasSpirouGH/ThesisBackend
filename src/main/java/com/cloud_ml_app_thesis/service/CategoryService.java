@@ -4,6 +4,7 @@ import com.cloud_ml_app_thesis.dto.category.CategoryDTO;
 import com.cloud_ml_app_thesis.dto.category.CategoryRequestDTO;
 import com.cloud_ml_app_thesis.dto.request.category.CategoryCreateRequest;
 import com.cloud_ml_app_thesis.dto.request.category.CategoryDeleteRequest;
+import com.cloud_ml_app_thesis.dto.request.category.CategorySearchRequest;
 import com.cloud_ml_app_thesis.dto.request.category.CategoryUpdateRequest;
 import com.cloud_ml_app_thesis.dto.response.Metadata;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
@@ -24,6 +25,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.nimbusds.oauth2.sdk.util.StringUtils;
 import jakarta.persistence.EntityExistsException;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
@@ -492,6 +494,63 @@ public class CategoryService {
                 .filter(category -> !category.isDeleted())
                 .map(this::mapCategoryToDto)
                 .collect(Collectors.toList());
+    }
+
+    public List<CategoryDTO> searchCategories(CategorySearchRequest request) {
+        CategorySearchRequest effectiveRequest = request != null ? request : new CategorySearchRequest();
+        return categoryRepository.findAll().stream()
+                .filter(category -> matchCategoryCriteria(category, effectiveRequest))
+                .map(this::mapCategoryToDto)
+                .collect(Collectors.toList());
+    }
+
+    private boolean matchCategoryCriteria(Category category, CategorySearchRequest request) {
+        List<Boolean> matches = new java.util.ArrayList<>();
+
+        if (!Boolean.TRUE.equals(request.getIncludeDeleted())) {
+            matches.add(!category.isDeleted());
+        }
+
+        if (StringUtils.isNotBlank(request.getSimpleSearchInput()) && !request.getSimpleSearchInput().equalsIgnoreCase("string")) {
+            String search = request.getSimpleSearchInput().toLowerCase();
+            boolean simpleMatch = category.getName().toLowerCase().contains(search)
+                    || (category.getDescription() != null && category.getDescription().toLowerCase().contains(search))
+                    || (category.getCreatedBy() != null && category.getCreatedBy().getUsername().toLowerCase().contains(search));
+            matches.add(simpleMatch);
+        }
+
+        if (StringUtils.isNotBlank(request.getName()) && !request.getName().equalsIgnoreCase("string")) {
+            boolean nameMatch = category.getName() != null &&
+                    category.getName().toLowerCase().contains(request.getName().toLowerCase());
+            matches.add(nameMatch);
+        }
+
+        if (StringUtils.isNotBlank(request.getDescription()) && !request.getDescription().equalsIgnoreCase("string")) {
+            boolean descriptionMatch = category.getDescription() != null &&
+                    category.getDescription().toLowerCase().contains(request.getDescription().toLowerCase());
+            matches.add(descriptionMatch);
+        }
+
+        if (StringUtils.isNotBlank(request.getCreatedByUsername()) && !request.getCreatedByUsername().equalsIgnoreCase("string")) {
+            boolean ownerMatch = category.getCreatedBy() != null &&
+                    category.getCreatedBy().getUsername().equalsIgnoreCase(request.getCreatedByUsername());
+            matches.add(ownerMatch);
+        }
+
+        if (request.getParentCategoryId() != null) {
+            boolean parentMatch = category.getParentCategories() != null &&
+                    category.getParentCategories().stream()
+                            .anyMatch(parent -> parent.getId().equals(request.getParentCategoryId()));
+            matches.add(parentMatch);
+        }
+
+        if (matches.isEmpty()) {
+            return true;
+        }
+
+        return request.getSearchMode() == CategorySearchRequest.SearchMode.AND
+                ? matches.stream().allMatch(Boolean::booleanValue)
+                : matches.stream().anyMatch(Boolean::booleanValue);
     }
 
     public GenericResponse<?> getPendingCategoryRequests() {

@@ -42,6 +42,7 @@ public class Model {
     private ModelStatus status;
 
     @Version
+    @Column
     private Integer version;
 
     @ManyToOne
@@ -64,7 +65,7 @@ public class Model {
     @Column(name = "keyword")
     private List<String> keywords;
 
-    @Column
+    @Column(name = "created_at")
     private ZonedDateTime createdAt;
 
     @Column(name = "finalized")

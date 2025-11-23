@@ -1,24 +1,20 @@
-package com.cloud_ml_app_thesis.dto.request.custom_algorithm;
+package com.cloud_ml_app_thesis.dto.request.category;
 
-import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.util.List;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class CustomAlgorithmSearchRequest {
-
+public class CategorySearchRequest{
     private String simpleSearchInput;
     private String name;
     private String description;
     private List<String> keywords;
-    private AlgorithmAccessibiltyEnum accessibility;
     private String createdAtFrom;
     private String createdAtTo;
+    private String createdByUsername;
+    private Integer parentCategoryId;
+    private Boolean includeDeleted = false;
     private SearchMode searchMode = SearchMode.OR;
 
     public enum SearchMode {

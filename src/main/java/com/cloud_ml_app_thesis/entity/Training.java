@@ -64,15 +64,5 @@ public class Training {
     @JoinColumn(name = "retrained_from")
     private Training retrainedFrom;
 
-    // Optional: Validate at runtime that only one of the two algorithm configs is used
-//    @PostLoad
-//    @PostPersist
-//    @PostUpdate
-//    private void validateConsistency() {
-//        if ((algorithmConfiguration != null && customAlgorithmConfiguration != null) ||
-//                (algorithmConfiguration == null && customAlgorithmConfiguration == null)) {
-//            throw new IllegalStateException("Training must have either algorithmConfiguration or customAlgorithmConfiguration, not both or none.");
-//        }
-//    }
 }
 

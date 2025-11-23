@@ -26,6 +26,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
+import com.cloud_ml_app_thesis.dto.request.train.TrainingSearchRequest;
 import com.cloud_ml_app_thesis.dto.train.ClusterEvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.EvaluationResult;
 import com.cloud_ml_app_thesis.dto.train.PredefinedTrainMetadata;
@@ -51,17 +52,13 @@ import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.UserRoleEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
-import com.cloud_ml_app_thesis.exception.BadRequestException;
 import com.cloud_ml_app_thesis.exception.UserInitiatedStopException;
 import com.cloud_ml_app_thesis.repository.AlgorithmConfigurationRepository;
-import com.cloud_ml_app_thesis.repository.AlgorithmParameterRepository;
 import com.cloud_ml_app_thesis.repository.AlgorithmTypeRepository;
-import com.cloud_ml_app_thesis.repository.CustomAlgorithmRepository;
 import com.cloud_ml_app_thesis.repository.DatasetConfigurationRepository;
 import com.cloud_ml_app_thesis.repository.ModelTypeRepository;
 import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.TrainingRepository;
-import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
 import com.cloud_ml_app_thesis.util.AlgorithmUtil;
@@ -96,9 +93,6 @@ public class TrainService {
     private final TaskStatusService taskStatusService;
     private final AlgorithmTypeRepository algorithmTypeRepository;
     private final EntityManager entityManager;
-    private final ModelExecutionRepository modelExecutionRepository;
-    private final AlgorithmParameterRepository algorithmParameterRepository;
-    private final CustomAlgorithmRepository customAlgorithmRepository;
     private final TransactionTemplate transactionTemplate;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -465,6 +459,16 @@ public class TrainService {
                         training.getUser() != null ? training.getUser().getUsername() : "Unknown"
                 ))
                 .toList();
+    }
+
+    public List<TrainingDTO> searchTrainings(TrainingSearchRequest request, User user) {
+        LocalDate fromDate = request != null ? request.getFromDate() : null;
+        Integer algorithmId = request != null ? request.getAlgorithmId() : null;
+        ModelTypeEnum type = request != null ? request.getType() : null;
+
+        return isAdmin(user)
+                ? findAllTrainings(fromDate, algorithmId, type)
+                : findTrainingsForUser(user, fromDate, algorithmId, type);
     }
 
     @Transactional(readOnly = true)

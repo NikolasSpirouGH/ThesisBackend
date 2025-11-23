@@ -4,10 +4,9 @@ import com.cloud_ml_app_thesis.dto.train.CustomTrainMetadata;
 import com.cloud_ml_app_thesis.dto.train.PredefinedTrainMetadata;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.service.CustomTrainingService;
-import com.cloud_ml_app_thesis.service.CustomPredictionService;
+import com.cloud_ml_app_thesis.service.CustomModelExecutionService;
 import com.cloud_ml_app_thesis.service.ModelExecutionService;
 import com.cloud_ml_app_thesis.service.TrainService;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -22,7 +21,7 @@ import java.util.concurrent.CompletableFuture;
 public class AsyncManager {
 
     private final CustomTrainingService customTrainingService;
-    private final CustomPredictionService customPredictionService;
+    private final CustomModelExecutionService customModelExecutionService;
     private final TrainService trainService;
     private final ModelExecutionService modelExecutionService;
 
@@ -54,7 +53,7 @@ public class AsyncManager {
     public CompletableFuture<String> predictCustom(String taskId, Integer modelId, String datasetKey, User user) {
         log.info("🔍 [ASYNC] Prediction started [taskId={}]", taskId);
         try {
-            customPredictionService.executeCustom(taskId, modelId, datasetKey, user);
+            customModelExecutionService.executeCustom(taskId, modelId, datasetKey, user);
 
             return CompletableFuture.completedFuture(null);
 

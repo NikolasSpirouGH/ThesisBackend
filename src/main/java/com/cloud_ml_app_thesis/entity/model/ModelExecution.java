@@ -1,6 +1,7 @@
 package com.cloud_ml_app_thesis.entity.model;
 
 import com.cloud_ml_app_thesis.entity.User;
+import com.cloud_ml_app_thesis.entity.accessibility.ModelExecutionAccessibility;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.status.ModelExecutionStatus;
 import jakarta.persistence.*;
@@ -40,5 +41,9 @@ public class ModelExecution {
     @ManyToOne
     @JoinColumn(name="executed_by_user_id", nullable = false)
     private User executedByUser;
+
+    @ManyToOne
+    @JoinColumn(name = "accessibility_id")
+    private ModelExecutionAccessibility accessibility;
 
 }

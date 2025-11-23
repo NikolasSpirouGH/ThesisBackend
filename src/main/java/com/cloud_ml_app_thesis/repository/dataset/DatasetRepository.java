@@ -19,7 +19,7 @@ public interface DatasetRepository extends JpaRepository<Dataset, Integer>, JpaS
     List<Dataset> findByCategory(Category category);
 
     // Find datasets that are either owned by the user OR are public
-    @Query("SELECT d FROM Dataset d WHERE d.user.username = :username OR d.accessibility.name = 'PUBLIC'")
+    @Query("SELECT d FROM Dataset d WHERE d.user.username = :username OR d.accessibility.name = com.cloud_ml_app_thesis.enumeration.accessibility.DatasetAccessibilityEnum.PUBLIC")
     List<Dataset> findAccessibleDatasetsByUsername(@Param("username") String username);
 
 }

@@ -3,7 +3,9 @@ package com.cloud_ml_app_thesis.service;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -11,6 +13,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.cloud_ml_app_thesis.dto.request.execution.ModelExecutionSearchRequest;
+import com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest;
+import com.cloud_ml_app_thesis.enumeration.accessibility.ModelExecutionAccessibilityEnum;
+import com.github.dockerjava.api.exception.UnauthorizedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
@@ -22,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.cloud_ml_app_thesis.config.BucketResolver;
-import com.cloud_ml_app_thesis.dto.response.execution.ModelExecutionDTO;
+import com.cloud_ml_app_thesis.dto.request.execution.ModelExecutionDTO;
 import com.cloud_ml_app_thesis.entity.AlgorithmConfiguration;
 import com.cloud_ml_app_thesis.entity.AlgorithmType;
 import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
@@ -43,6 +49,8 @@ import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
 import com.cloud_ml_app_thesis.util.DatasetUtil;
+import com.cloud_ml_app_thesis.util.DateUtil;
+import com.nimbusds.oauth2.sdk.util.StringUtils;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
@@ -73,6 +81,7 @@ public class ModelExecutionService {
     private final TaskStatusRepository taskStatusRepository;
     private final EntityManager entityManager;
     private final TransactionTemplate transactionTemplate;
+    private final DateUtil dateUtil;
 
     private static final Logger logger = LoggerFactory.getLogger(ModelExecutionService.class);
 
@@ -275,140 +284,6 @@ public class ModelExecutionService {
         }
     }
 
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void executeCustom(String taskId, Integer modelId, String datasetKey, User user) {
-        boolean complete = false;
-        ModelExecution execution = null;
-        log.info("🧠 Starting Custom model prediction [taskId={}]", taskId);
-
-        AsyncTaskStatus task = taskStatusRepository.findById(taskId)
-                .orElseThrow(() -> new IllegalStateException("Missing task record"));
-
-        Model model = modelRepository.findByIdWithTrainingDetails(modelId)
-                .orElseThrow(() -> new EntityNotFoundException("Model not found with ID: " + modelId));
-
-        if (model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE) &&
-                !user.getUsername().equals(model.getTraining().getUser().getUsername())) {
-            throw new AuthorizationDeniedException("You are not allowed to run this model");
-        }
-
-        if (!model.getModelType().getName().equals(ModelTypeEnum.CUSTOM)) {
-            throw new IllegalArgumentException("This model is not Custom-based");
-        }
-
-        task.setStatus(TaskStatusEnum.RUNNING);
-        taskStatusRepository.save(task);
-        entityManager.detach(task);
-
-        try {
-            // Check for stop request before starting
-            if (taskStatusService.stopRequested(taskId)) {
-                throw new UserInitiatedStopException("User requested stop for task " + taskId);
-            }
-
-            DatasetConfiguration datasetConfiguration = model.getTraining().getDatasetConfiguration();
-            if (datasetConfiguration == null) {
-                throw new IllegalStateException("Model " + modelId + " does not have an associated dataset configuration");
-            }
-
-            // ⬇️ Create ModelExecution record
-            execution = new ModelExecution();
-            execution.setModel(model);
-            execution.setExecutedByUser(user);
-            execution.setDataset(datasetConfiguration.getDataset());
-            execution.setExecutedAt(ZonedDateTime.now());
-            execution.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.RUNNING).orElseThrow());
-            modelExecutionRepository.save(execution);
-            entityManager.detach(execution);
-
-            log.info("🐳 Custom model execution started - this would involve Docker container execution");
-            log.info("📝 Note: Custom model execution not fully implemented yet");
-
-            // TODO: Implement custom model execution with Docker containers
-            // This would involve similar logic to CustomTrainingService but for prediction
-
-            // For now, just simulate completion
-            Thread.sleep(5000);
-
-            // Check for stop request after simulation
-            if (taskStatusService.stopRequested(taskId)) {
-                throw new UserInitiatedStopException("User requested stop after simulation for task " + taskId);
-            }
-
-            complete = true;
-            String simulatedResult = "Custom prediction completed successfully";
-
-            // ⬇️ Update ModelExecution in separate transaction
-            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-            final Integer executionId = execution.getId();
-            final String finalResult = simulatedResult;
-            transactionTemplate.executeWithoutResult(status -> {
-                ModelExecution exec = modelExecutionRepository.findById(executionId)
-                        .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
-                exec.setPredictionResult(finalResult);
-                exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.COMPLETED).orElseThrow());
-                modelExecutionRepository.saveAndFlush(exec);
-            });
-
-            // ⬇️ Complete async task in separate transaction
-            transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-            final Integer finalExecutionId = execution.getId();
-            transactionTemplate.executeWithoutResult(status -> {
-                if (taskStatusService.stopRequested(taskId)) {
-                    return; // Don't complete if stopped
-                }
-                AsyncTaskStatus freshTask = taskStatusRepository.findById(taskId).orElseThrow();
-                freshTask.setStatus(TaskStatusEnum.COMPLETED);
-                freshTask.setFinishedAt(ZonedDateTime.now());
-                freshTask.setExecutionId(finalExecutionId);
-                taskStatusRepository.saveAndFlush(freshTask);
-            });
-
-            log.info("✅ Custom model prediction completed [taskId={}]", taskId);
-
-        } catch (UserInitiatedStopException e) {
-            log.warn("🛑 Custom execution manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
-
-            taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
-
-            ModelExecutionStatusEnum finalStatus = complete
-                    ? ModelExecutionStatusEnum.COMPLETED
-                    : ModelExecutionStatusEnum.FAILED;
-
-            // Update execution status in separate transaction
-            if (execution != null) {
-                final Integer executionId = execution.getId();
-                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-                transactionTemplate.executeWithoutResult(status -> {
-                    ModelExecution exec = modelExecutionRepository.findById(executionId)
-                            .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
-                    exec.setStatus(modelExecutionStatusRepository.findByName(finalStatus)
-                            .orElseThrow(() -> new EntityNotFoundException("ModelExecutionStatus not found")));
-                    modelExecutionRepository.saveAndFlush(exec);
-                });
-            }
-        } catch (Exception e) {
-            log.error("❌ Custom model prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);
-
-            // Task -> FAILED
-            taskStatusService.taskFailed(taskId, e.getMessage());
-
-            // ModelExecution -> FAILED in separate transaction
-            if (execution != null) {
-                final Integer executionId = execution.getId();
-                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-                transactionTemplate.executeWithoutResult(status -> {
-                    ModelExecution exec = modelExecutionRepository.findById(executionId)
-                            .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
-                    exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED)
-                            .orElseThrow(() -> new EntityNotFoundException("ModelExecutionStatus FAILED not found")));
-                    modelExecutionRepository.saveAndFlush(exec);
-                });
-            }
-
-            throw new RuntimeException("Custom model prediction failed: " + e.getMessage(), e);
-        }
-    }
 
     public ByteArrayResource getExecutionResultsFile(Integer modelExecutionId, User user) {
         logger.debug("📥 Fetching result for execution id = {} by user={}", modelExecutionId, user.getUsername());
@@ -482,23 +357,6 @@ public class ModelExecutionService {
         return predictions;
     }
 
-//    private List<String> predictWithClusterer(Clusterer clusterer, Instances dataset) throws Exception {
-//        logger.info("Performing prediction with clusterer on dataset with {} instances", dataset.numInstances());
-//        List<String> predictions = new ArrayList<>();
-//        for (int i = 0; i < dataset.numInstances(); i++) {
-//            try {
-//                int cluster = clusterer.clusterInstance(dataset.instance(i));
-//                String clusterLabel = "Cluster " + cluster; // Here you can map to more meaningful labels if available
-//                logger.info("Instance {}: Predicted cluster: {}", i, clusterLabel);
-//                predictions.add(clusterLabel);
-//            } catch (Exception e) {
-//                logger.error("Error predicting instance {}: {}", i, e.getMessage(), e);
-//                throw e; // Re-throw the exception after logging it
-//            }
-//        }
-//        logger.info("Cluster predictions completed successfully. Total predictions: {}", predictions.size());
-//        return predictions;
-//    }
 
     private List<String> predictWithClusterer(Clusterer clusterer, Instances dataset) throws Exception {
         logger.info("Performing prediction with clusterer on dataset with {} instances", dataset.numInstances());
@@ -511,14 +369,111 @@ public class ModelExecutionService {
         return predictions;
     }
 
-    public List<ModelExecutionDTO> getUserExecutions(User user) {
-        log.info("📋 Retrieving executions for user: {}", user.getUsername());
+    @Transactional(readOnly = true)
+    public List<ModelExecutionDTO> getUserExecutions(
+            User user,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer modelId,
+            ModelExecutionStatusEnum status) {
 
+        log.info("📋 Fetching executions for user {} with filters [fromDate={}, toDate={}, modelId={}, status={}]",
+                user.getId(), fromDate, toDate, modelId, status);
+
+        // Get all executions for user (simple query - same pattern as ModelService)
         List<ModelExecution> executions = modelExecutionRepository.findByExecutedByUserWithDetails(user);
 
-        return executions.stream()
+        // Convert LocalDate to ZonedDateTime for filtering
+        ZonedDateTime fromDateTime = fromDate != null
+                ? fromDate.atStartOfDay(ZoneId.systemDefault())
+                : null;
+        ZonedDateTime toDateTime = toDate != null
+                ? toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault())
+                : null;
+
+        // Filter in-memory (same pattern as ModelService)
+        List<ModelExecution> filteredExecutions = executions.stream()
+                .filter(execution -> {
+                    // Filter by date range
+                    if (fromDateTime != null && execution.getExecutedAt().isBefore(fromDateTime)) {
+                        return false;
+                    }
+                    if (toDateTime != null && execution.getExecutedAt().isAfter(toDateTime)) {
+                        return false;
+                    }
+                    // Filter by model ID
+                    if (modelId != null && !execution.getModel().getId().equals(modelId)) {
+                        return false;
+                    }
+                    // Filter by status
+                    if (status != null && !execution.getStatus().getName().equals(status)) {
+                        return false;
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
+
+        log.info("✅ Found {} executions for user {} (filtered from {})",
+                filteredExecutions.size(), user.getId(), executions.size());
+
+        return filteredExecutions.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    public List<ModelExecutionDTO> searchExecutions(ModelExecutionSearchRequest request, User user) {
+        ModelExecutionSearchRequest criteria = request != null ? request : new ModelExecutionSearchRequest();
+
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName().name().equals("ADMIN"));
+
+        log.info("User {} isAdmin: {}", user.getUsername(), isAdmin);
+
+        List<ModelExecution> executions = isAdmin
+                ? modelExecutionRepository.findAllWithDetails()
+                : modelExecutionRepository.findAccessibleToUser(user.getId());
+
+        log.info("Found {} executions before filtering", executions.size());
+
+        List<ModelExecutionDTO> filtered = executions.stream()
+                .filter(execution -> matchExecutionCriteria(execution, criteria))
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+
+        log.info("Returning {} executions after filtering", filtered.size());
+
+        return filtered;
+    }
+
+    private boolean matchExecutionCriteria(ModelExecution execution, ModelExecutionSearchRequest request) {
+        List<Boolean> matches = new ArrayList<>();
+
+        boolean hasExecutedAtFrom = StringUtils.isNotBlank(request.getExecutedAtFrom()) && !request.getExecutedAtFrom().equalsIgnoreCase("string");
+        boolean hasExecutedAtTo = StringUtils.isNotBlank(request.getExecutedAtTo()) && !request.getExecutedAtTo().equalsIgnoreCase("string");
+        if (hasExecutedAtFrom || hasExecutedAtTo) {
+            if (execution.getExecutedAt() == null) {
+                matches.add(false);
+            } else {
+                LocalDateTime executedAt = execution.getExecutedAt().toLocalDateTime();
+                boolean dateMatch = true;
+
+                if (hasExecutedAtFrom) {
+                    LocalDateTime from = dateUtil.parseDateTime(request.getExecutedAtFrom(), true);
+                    dateMatch = dateMatch && (executedAt.isAfter(from) || executedAt.isEqual(from));
+                }
+                if (hasExecutedAtTo) {
+                    LocalDateTime to = dateUtil.parseDateTime(request.getExecutedAtTo(), false);
+                    dateMatch = dateMatch && (executedAt.isBefore(to) || executedAt.isEqual(to));
+                }
+                matches.add(dateMatch);
+            }
+        }
+        if (matches.isEmpty()) {
+            return true;
+        }
+
+        // All date conditions must be satisfied
+        return matches.stream().allMatch(Boolean::booleanValue);
     }
 
     private ModelExecutionDTO convertToDTO(ModelExecution execution) {
@@ -526,17 +481,18 @@ public class ModelExecutionService {
 
         return ModelExecutionDTO.builder()
                 .id(execution.getId())
-                .modelName(model.getName())
-                .modelType(model.getModelType().getName().toString())
-                .algorithmName(getAlgorithmName(model))
+                .modelName(model != null ? model.getName() : "Unknown Model")
+                .modelType(model != null ? model.getModelType().getName().toString() : "UNKNOWN")
+                .algorithmName(model != null ? getAlgorithmName(model) : "Unknown Algorithm")
                 .datasetName(execution.getDataset() != null ? execution.getDataset().getFileName(): "Unknown Dataset")
                 .executedAt(execution.getExecutedAt())
-                .status(execution.getStatus().getName().toString())
+                .status(execution.getStatus() != null ? execution.getStatus().getName().toString() : "UNKNOWN")
                 .predictionResult(execution.getPredictionResult())
-                .modelId(model.getId())
+                .modelId(model != null ? model.getId() : null)
                 .datasetId(execution.getDataset() != null ? execution.getDataset().getId() : null)
                 .hasResultFile(execution.getPredictionResult() != null && !execution.getPredictionResult().isEmpty())
                 .ownerUsername(execution.getExecutedByUser() != null ? execution.getExecutedByUser().getUsername() : "Unknown")
+                .accessibility(execution.getAccessibility() != null ? execution.getAccessibility().getName().toString() : "PRIVATE")
                 .build();
     }
 
@@ -547,9 +503,9 @@ public class ModelExecutionService {
         ModelExecution execution = modelExecutionRepository.findById(executionId)
                 .orElseThrow(() -> new EntityNotFoundException("Model execution not found with ID: " + executionId));
 
-        // Authorization check: only the user who executed can delete
-        if (!execution.getExecutedByUser().getUsername().equals(user.getUsername())) {
-            throw new AuthorizationDeniedException("You are not authorized to delete this execution");
+        if(!execution.getExecutedByUser().getUsername().equals(user.getUsername())
+                && !execution.getAccessibility().getName().equals(ModelExecutionAccessibilityEnum.PUBLIC)) {
+            throw new UnauthorizedException("You are not authorized to access this execution");
         }
 
         // Delete the prediction result file from MinIO if exists
@@ -591,4 +547,21 @@ public class ModelExecutionService {
             return "Unknown Algorithm";
         }
     }
+
+    @Transactional(readOnly = true)
+    public ModelExecutionDTO getExecutionDetails(Integer executionId, User user) {
+        log.info("Fetching execution details [executionId={}, user={}]", executionId, user.getUsername());
+
+        ModelExecution execution = modelExecutionRepository.findById(executionId)
+                .orElseThrow(() -> new EntityNotFoundException("Model execution not found with ID: " + executionId));
+
+        if(!execution.getExecutedByUser().getUsername().equals(user.getUsername())
+                && !execution.getAccessibility().getName().equals(ModelExecutionAccessibilityEnum.PUBLIC)) {
+            throw new UnauthorizedException("You are not authorized to access this execution");
+        }
+
+        log.info("Execution details retrieved successfully [executionId={}]", executionId);
+        return convertToDTO(execution);
+    }
+
 }

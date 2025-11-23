@@ -1,11 +1,12 @@
 package com.cloud_ml_app_thesis.controller;
 
-import com.cloud_ml_app_thesis.dto.request.execution.ExecutionUpdateRequest;
+import com.cloud_ml_app_thesis.dto.request.execution.ModelExecutionSearchRequest;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -14,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.execution.ExecuteRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
-import com.cloud_ml_app_thesis.dto.response.execution.ModelExecutionDTO;
+import com.cloud_ml_app_thesis.dto.request.execution.ModelExecutionDTO;
 import com.cloud_ml_app_thesis.service.ModelExecutionService;
 import com.cloud_ml_app_thesis.util.orchestrator.PredictionOrchestrator;
 
@@ -72,30 +73,6 @@ public class ModelExecutionController {
         ));
     }
 
-    @GetMapping("/list")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "List user's model executions",
-            description = "Retrieves all model executions (both Weka and Custom) for the authenticated user.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Executions retrieved successfully"),
-            @ApiResponse(responseCode = "401", description = "User not authenticated"),
-            @ApiResponse(responseCode = "500", description = "Internal server error")
-    })
-    public ResponseEntity<GenericResponse<List<ModelExecutionDTO>>> listUserExecutions(
-            @AuthenticationPrincipal AccountDetails accountDetails) {
-
-        log.info("📋 Listing executions for user: {}", accountDetails.getUsername());
-
-        List<ModelExecutionDTO> executions = modelExecutionService.getUserExecutions(accountDetails.getUser());
-
-        log.info("✅ Retrieved {} executions for user: {}", executions.size(), accountDetails.getUsername());
-
-        return ResponseEntity.ok(GenericResponse.success(
-                "Executions retrieved successfully",
-                executions
-        ));
-    }
-
     @GetMapping("/{executionId}/result")
     @PreAuthorize("hasRole('USER')")
     @Operation(summary = "Download prediction result file",
@@ -149,6 +126,42 @@ public class ModelExecutionController {
         return ResponseEntity.ok(GenericResponse.success(
                 "Execution deleted successfully",
                 null
+        ));
+    }
+
+    @Operation(summary = "Search model executions", description = "Search executions with dates")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Search completed successfully")
+    })
+    @PostMapping("/search")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ModelExecutionDTO>> searchExecutions(
+            @Valid @RequestBody ModelExecutionSearchRequest request,
+            @AuthenticationPrincipal AccountDetails accountDetails) {
+        log.info("Searching model executions for user={}", accountDetails.getUsername());
+        List<ModelExecutionDTO> executions = modelExecutionService.searchExecutions(request, accountDetails.getUser());
+        return ResponseEntity.ok(executions);
+    }
+
+    @GetMapping("/{executionId}")
+    @PreAuthorize("isAuthenticated")
+    @Operation(summary = "Get single execution details",
+            description = "Retrieves detailed information about a specific model execution.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Execution details retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "User not authorized to access this execution"),
+            @ApiResponse(responseCode = "404", description = "Execution not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<GenericResponse<ModelExecutionDTO>> getExecutionDetails(
+            @PathVariable Integer executionId,
+            @AuthenticationPrincipal AccountDetails accountDetails
+    ) {
+        ModelExecutionDTO exeucution = modelExecutionService.getExecutionDetails(executionId, accountDetails.getUser());
+
+        return ResponseEntity.ok(GenericResponse.success(
+                "Execution details retrieved successfully",
+                exeucution
         ));
     }
 }

@@ -17,10 +17,29 @@ public interface ModelExecutionRepository  extends JpaRepository<ModelExecution,
     int countByModelId(Integer id);
 
     @Query("SELECT me FROM ModelExecution me " +
-           "JOIN FETCH me.model m " +
-           "JOIN FETCH me.status s " +
+           "LEFT JOIN FETCH me.model m " +
+           "LEFT JOIN FETCH me.status s " +
            "LEFT JOIN FETCH me.dataset d " +
+           "LEFT JOIN FETCH me.accessibility a " +
            "WHERE me.executedByUser = :user " +
            "ORDER BY me.executedAt DESC")
     List<ModelExecution> findByExecutedByUserWithDetails(@Param("user") User user);
+
+    @Query("SELECT me FROM ModelExecution me " +
+           "LEFT JOIN FETCH me.model m " +
+           "LEFT JOIN FETCH me.status s " +
+           "LEFT JOIN FETCH me.dataset d " +
+           "LEFT JOIN FETCH me.accessibility a " +
+           "ORDER BY me.executedAt DESC")
+    List<ModelExecution> findAllWithDetails();
+
+    @Query("SELECT DISTINCT me FROM ModelExecution me " +
+           "LEFT JOIN FETCH me.model m " +
+           "LEFT JOIN FETCH me.status s " +
+           "LEFT JOIN FETCH me.dataset d " +
+           "LEFT JOIN FETCH me.accessibility a " +
+           "WHERE (me.executedByUser.id = :userId " +
+           "   OR a.name = com.cloud_ml_app_thesis.enumeration.accessibility.ModelExecutionAccessibilityEnum.PUBLIC) " +
+           "ORDER BY me.executedAt DESC")
+    List<ModelExecution> findAccessibleToUser(@Param("userId") java.util.UUID userId);
 }

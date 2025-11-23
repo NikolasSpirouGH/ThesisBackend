@@ -1,4 +1,4 @@
-package com.cloud_ml_app_thesis.dto.response.execution;
+package com.cloud_ml_app_thesis.dto.request.execution;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,4 +24,5 @@ public class ModelExecutionDTO {
     private Integer datasetId;
     private boolean hasResultFile;
     private String ownerUsername;
+    private String accessibility; // "PUBLIC", "PRIVATE", "RESTRICTED"
 }

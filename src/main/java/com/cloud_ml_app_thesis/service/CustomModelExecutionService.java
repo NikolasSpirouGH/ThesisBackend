@@ -38,18 +38,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class CustomPredictionService {
+public class CustomModelExecutionService {
 
     private final TaskStatusRepository taskStatusRepository;
     private final ModelRepository modelRepository;
@@ -305,6 +302,8 @@ public class CustomPredictionService {
             log.warn("⚠️ Failed to adjust permissions for {}: {}", dir, e.getMessage());
         }
     }
+
+
 
 }
 
