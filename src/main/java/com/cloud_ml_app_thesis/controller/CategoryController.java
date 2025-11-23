@@ -58,6 +58,19 @@ public class CategoryController {
         return ResponseEntity.ok(categories);
     }
 
+    @Operation(summary = "Get category by ID", description = "Returns a single category by its ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Category retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Category not found")
+    })
+    @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<CategoryDTO> getCategoryById(
+            @Parameter(description = "ID of the category to retrieve") @PathVariable @Positive Integer id) {
+        CategoryDTO category = categoryService.getCategoryById(id);
+        return ResponseEntity.ok(category);
+    }
+
     @Operation(summary = "Get pending category requests (Admin only)", description = "Returns all pending category requests for admin approval")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Pending requests retrieved successfully"),

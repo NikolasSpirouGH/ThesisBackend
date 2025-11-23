@@ -100,7 +100,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<GenericResponse<?>> handleIllegalStateException(IllegalStateException ex) {
-        GenericResponse<?> errorResponse = new GenericResponse<>(null, "ILLEGAL_STATE", "File processing error", new Metadata());
+        logger.warn("Illegal state exception: {}", ex.getMessage());
+        GenericResponse<?> errorResponse = new GenericResponse<>(null, "ILLEGAL_STATE", ex.getMessage(), new Metadata());
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 

@@ -300,24 +300,32 @@ public class CategoryService {
         // Handle models with this main category
         List<Model> models = modelRepository.findByCategory(categoryToDelete);
         Category closestParent = findClosestParent(categoryToDelete);
-        if (!models.isEmpty()) {
+
+        // Count how many models and datasets are using this category
+        List<Dataset> datasets = datasetRepository.findByCategory(categoryToDelete);
+        int modelCount = models.size();
+        int datasetCount = datasets.size();
+
+        if (!models.isEmpty() || !datasets.isEmpty()) {
             if (closestParent == null) {
-                log.warn("Deletion denied: No valid parent found to reassign models.");
-                throw new IllegalStateException("Cannot delete category: No valid parent category found.");
+                String errorMessage = String.format(
+                    "Cannot delete category '%s'. This is a top-level category with no parent, and it is currently used by %d model(s) and %d dataset(s). " +
+                    "To delete this category, please first assign these items to another category or add a parent category to '%s'.",
+                    categoryToDelete.getName(),
+                    modelCount,
+                    datasetCount,
+                    categoryToDelete.getName()
+                );
+                log.warn("Deletion denied for category '{}': No valid parent found to reassign {} models and {} datasets.",
+                    categoryToDelete.getName(), modelCount, datasetCount);
+                throw new IllegalStateException(errorMessage);
             }
+
             for (Model model : models) {
                 log.info("Reassigning model '{}' from main category ID {} to parent ID {}", model.getId(), categoryId, closestParent.getId());
                 model.setCategory(closestParent);
             }
-        }
 
-        // Handle datasets with this main category
-        List<Dataset> datasets = datasetRepository.findByCategory(categoryToDelete);
-        if (!datasets.isEmpty()) {
-            if (closestParent == null) {
-                log.warn("Deletion denied: No valid parent found to reassign datasets.");
-                throw new IllegalStateException("Cannot delete category: No valid parent category found.");
-            }
             for (Dataset dataset : datasets) {
                 log.info("Reassigning dataset '{}' from main category ID {} to parent ID {}", dataset.getId(), categoryId, closestParent.getId());
                 dataset.setCategory(closestParent);
@@ -494,6 +502,17 @@ public class CategoryService {
                 .filter(category -> !category.isDeleted())
                 .map(this::mapCategoryToDto)
                 .collect(Collectors.toList());
+    }
+
+    public CategoryDTO getCategoryById(Integer id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Category not found with id: " + id));
+
+        if (category.isDeleted()) {
+            throw new EntityNotFoundException("Category has been deleted with id: " + id);
+        }
+
+        return mapCategoryToDto(category);
     }
 
     public List<CategoryDTO> searchCategories(CategorySearchRequest request) {

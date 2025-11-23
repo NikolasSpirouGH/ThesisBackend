@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.controller;
 
+import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.dataset.*;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.entity.User;
@@ -64,7 +65,7 @@ public class DatasetController {
 
     @PatchMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<GenericResponse<?>> updateDataset(@AuthenticationPrincipal UserDetails userDetails, @ModelAttribute DatasetUpdateRequest request) {
+    public ResponseEntity<GenericResponse<?>> updateDataset(@AuthenticationPrincipal AccountDetails userDetails, @ModelAttribute DatasetUpdateRequest request) {
         //TODO why is DatasetUpdateRequest request haivng only the file? should igve id of the update dataset and more.
         String username = userDetails.getUsername();
         User user = userRepository.findByUsername(username)
@@ -78,7 +79,7 @@ public class DatasetController {
     }
 
     @GetMapping
-    public ResponseEntity<GenericResponse<?>> getDatasets(@AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<GenericResponse<?>> getDatasets(@AuthenticationPrincipal AccountDetails userDetails) {
         String username = null;
         if(userDetails != null){
             username = userDetails.getUsername();
@@ -140,7 +141,7 @@ public class DatasetController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<org.springframework.core.io.ByteArrayResource> downloadDataset(
             @PathVariable Integer id,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @AuthenticationPrincipal AccountDetails userDetails) {
 
         User user = userRepository.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
@@ -155,6 +156,21 @@ public class DatasetController {
                 .contentLength(resource.contentLength())
                 .body(resource);
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> deleteDataset(
+            @PathVariable Integer id,
+            @AuthenticationPrincipal AccountDetails userDetails) {
+
+        User user = userRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+        datasetService.deleteDataset(id, user);
+
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{email}/category")
     public ResponseEntity<GenericResponse<?>> getDatasetsUrls(@PathVariable String email){
         GenericResponse<?> response = datasetService.getDatasetUrls(email);

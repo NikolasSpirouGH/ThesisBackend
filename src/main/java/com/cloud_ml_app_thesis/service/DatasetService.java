@@ -377,5 +377,48 @@ public class DatasetService {
         byte[] data = minioService.downloadObjectAsBytes(bucket, key);
         return new ByteArrayResource(data);
     }
+
+    public void deleteDataset(Integer datasetId, User user) {
+        Dataset dataset = datasetRepository.findById(datasetId)
+                .orElseThrow(() -> new EntityNotFoundException("Dataset not found with ID: " + datasetId));
+
+        // Check if user has permission to delete
+        boolean isOwner = dataset.getUser().getId().equals(user.getId());
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName().name().equals("ADMIN"));
+
+        if (!isOwner && !isAdmin) {
+            throw new AuthorizationDeniedException("You are not authorized to delete this dataset. Only the owner or an admin can delete it.");
+        }
+
+        // Check if dataset is being used by any models or trainings
+        // TODO: Add checks for models/trainings using this dataset if needed
+        // For now, we'll allow deletion but log a warning
+
+        log.info("User '{}' is deleting dataset '{}' (ID: {})", user.getUsername(), dataset.getFileName(), datasetId);
+
+        try {
+            // Delete the file from MinIO
+            String filePath = dataset.getFilePath();
+            String bucket = bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET);
+
+            String key;
+            if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+                key = minioService.extractMinioKey(filePath);
+            } else {
+                key = filePath.contains("/") ? filePath.substring(filePath.indexOf("/") + 1) : filePath;
+            }
+
+            minioService.deleteObject(bucket, key);
+            log.info("Deleted dataset file from MinIO: bucket={}, key={}", bucket, key);
+        } catch (Exception e) {
+            log.error("Failed to delete dataset file from MinIO for dataset ID {}: {}", datasetId, e.getMessage(), e);
+            // Continue with database deletion even if MinIO deletion fails
+        }
+
+        // Delete from database
+        datasetRepository.delete(dataset);
+        log.info("Dataset deleted successfully from database: ID={}", datasetId);
+    }
 }
 
