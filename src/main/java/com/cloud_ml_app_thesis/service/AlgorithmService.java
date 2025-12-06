@@ -3,12 +3,14 @@ package com.cloud_ml_app_thesis.service;
 import com.cloud_ml_app_thesis.dto.request.algorithm.AlgorithmCreateRequest;
 import com.cloud_ml_app_thesis.dto.request.algorithm.AlgorithmUpdateRequest;
 import com.cloud_ml_app_thesis.dto.weka_algorithm.WekaAlgorithmDTO;
+import com.cloud_ml_app_thesis.dto.weka_algorithm.WekaAlgorithmOptionDTO;
 import com.cloud_ml_app_thesis.entity.Algorithm;
 import com.cloud_ml_app_thesis.entity.AlgorithmConfiguration;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.repository.AlgorithmConfigurationRepository;
 import com.cloud_ml_app_thesis.repository.AlgorithmRepository;
 import com.cloud_ml_app_thesis.util.ValidationUtil;
+import com.cloud_ml_app_thesis.util.WekaOptionsParser;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -217,6 +219,28 @@ public class AlgorithmService {
                 .id(algorithm.getId())
                 .name(algorithm.getName())
                 .description(algorithm.getDescription())
+                .build();
+    }
+
+    /**
+     * Get algorithm by ID with parsed options
+     */
+    public WekaAlgorithmDTO getAlgorithmWithOptions(Integer id) {
+        Algorithm algorithm = algorithmRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Algorithm not found with id: " + id));
+
+        List<WekaAlgorithmOptionDTO> parsedOptions = WekaOptionsParser.parseOptions(
+                algorithm.getOptions(),
+                algorithm.getOptionsDescription(),
+                algorithm.getDefaultOptions()
+        );
+
+        return WekaAlgorithmDTO.builder()
+                .id(algorithm.getId())
+                .name(algorithm.getName())
+                .description(algorithm.getDescription())
+                .options(parsedOptions)
+                .defaultOptionsString(algorithm.getDefaultOptions())
                 .build();
     }
 }

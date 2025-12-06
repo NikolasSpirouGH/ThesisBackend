@@ -4,7 +4,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import com.cloud_ml_app_thesis.dto.dataset.DatasetColumnsResponse;
 import com.cloud_ml_app_thesis.entity.User;
+import com.cloud_ml_app_thesis.util.DatasetUtil;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +33,7 @@ import com.cloud_ml_app_thesis.enumeration.ModelTypeEnum;
 import com.cloud_ml_app_thesis.service.ModelService;
 import com.cloud_ml_app_thesis.service.TrainService;
 import com.cloud_ml_app_thesis.util.orchestrator.TrainingOrchestrator;
+import org.springframework.web.multipart.MultipartFile;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -230,5 +233,24 @@ public class TrainingController {
                 "predefined", predefined,
                 "custom", custom
         ));
+    }
+
+    @Operation(summary = "Parse dataset columns", description = "Upload a dataset file to get column information")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Dataset columns parsed successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid file format"),
+            @ApiResponse(responseCode = "500", description = "Error parsing dataset")
+    })
+    @PostMapping(value = "/parse-dataset-columns", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<DatasetColumnsResponse> parseDatasetColumns(
+            @RequestParam("file") MultipartFile file) {
+        try {
+            DatasetColumnsResponse response = DatasetUtil.parseDatasetColumns(file);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error parsing dataset columns", e);
+            return ResponseEntity.badRequest().build();
+        }
     }
 }

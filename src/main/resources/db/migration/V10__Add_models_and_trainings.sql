@@ -10,7 +10,7 @@ DO $$
         bigspy_id UUID;
         nickriz_id UUID;
         dataset_ids INT[];
-        algorithm_id INT;
+        algorithm_ids INT[];
         algorithm_type_id INT;
         model_type_id INT;
         model_status_finished_id INT;
@@ -43,8 +43,8 @@ DO $$
         -- Get dataset IDs (first 20 datasets)
         SELECT ARRAY(SELECT id FROM datasets ORDER BY id LIMIT 20) INTO dataset_ids;
 
-        -- Get reference IDs
-        SELECT id INTO algorithm_id FROM algorithms LIMIT 1;
+        -- Get multiple algorithm IDs (first 20 algorithms to have variety)
+        SELECT ARRAY(SELECT id FROM algorithms ORDER BY id LIMIT 20) INTO algorithm_ids;
         SELECT id INTO algorithm_type_id FROM const_algorithm_types LIMIT 1;
         SELECT id INTO model_type_id FROM const_model_types WHERE name = 'CUSTOM' LIMIT 1;
         SELECT id INTO model_status_finished_id FROM const_model_statuses WHERE name = 'FINISHED' LIMIT 1;
@@ -68,8 +68,10 @@ DO $$
         SELECT id INTO category_transformer_id FROM categories WHERE name = 'Transformers' LIMIT 1;
 
         -- Check if we have required data
-        IF algorithm_id IS NULL OR array_length(dataset_ids, 1) < 20 THEN
-            RAISE NOTICE 'Insufficient datasets (%) or algorithms, skipping model creation', COALESCE(array_length(dataset_ids, 1), 0);
+        IF array_length(algorithm_ids, 1) < 20 OR array_length(dataset_ids, 1) < 20 THEN
+            RAISE NOTICE 'Insufficient datasets (%) or algorithms (%), skipping model creation',
+                COALESCE(array_length(dataset_ids, 1), 0),
+                COALESCE(array_length(algorithm_ids, 1), 0);
             RETURN;
         END IF;
 
@@ -78,7 +80,7 @@ DO $$
         VALUES (dataset_ids[1], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[1], algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (emma_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -96,7 +98,7 @@ DO $$
         VALUES (dataset_ids[2], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[2], algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (emma_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -114,7 +116,7 @@ DO $$
         VALUES (dataset_ids[3], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[3], algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (emma_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -132,7 +134,7 @@ DO $$
         VALUES (dataset_ids[4], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[4], algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (emma_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -150,7 +152,7 @@ DO $$
         VALUES (dataset_ids[5], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[5], algorithm_type_id, emma_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (emma_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -168,7 +170,7 @@ DO $$
         VALUES (dataset_ids[6], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[6], algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (david_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -186,7 +188,7 @@ DO $$
         VALUES (dataset_ids[7], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[7], algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (david_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -204,7 +206,7 @@ DO $$
         VALUES (dataset_ids[8], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[8], algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (david_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -222,7 +224,7 @@ DO $$
         VALUES (dataset_ids[9], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[9], algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (david_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -240,7 +242,7 @@ DO $$
         VALUES (dataset_ids[10], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[10], algorithm_type_id, david_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (david_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -258,7 +260,7 @@ DO $$
         VALUES (dataset_ids[11], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[11], algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (bigspy_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -276,7 +278,7 @@ DO $$
         VALUES (dataset_ids[12], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[12], algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (bigspy_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -294,7 +296,7 @@ DO $$
         VALUES (dataset_ids[13], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[13], algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (bigspy_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -312,7 +314,7 @@ DO $$
         VALUES (dataset_ids[14], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[14], algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (bigspy_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -330,7 +332,7 @@ DO $$
         VALUES (dataset_ids[15], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[15], algorithm_type_id, bigspy_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (bigspy_id, dataset_config_id, algo_config_id, training_status_running_id,
@@ -348,7 +350,7 @@ DO $$
         VALUES (dataset_ids[16], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[16], algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (nickriz_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -366,7 +368,7 @@ DO $$
         VALUES (dataset_ids[17], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[17], algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (nickriz_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -384,7 +386,7 @@ DO $$
         VALUES (dataset_ids[18], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[18], algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (nickriz_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -402,7 +404,7 @@ DO $$
         VALUES (dataset_ids[19], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[19], algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (nickriz_id, dataset_config_id, algo_config_id, training_status_completed_id,
@@ -420,7 +422,7 @@ DO $$
         VALUES (dataset_ids[20], 'DEFAULT', NOW()) RETURNING id INTO dataset_config_id;
 
         INSERT INTO algorithm_configurations (algorithm_id, algorithm_type_id, user_id)
-        VALUES (algorithm_id, algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
+        VALUES (algorithm_ids[20], algorithm_type_id, nickriz_id) RETURNING id INTO algo_config_id;
 
         INSERT INTO trainings (user_id, dataset_id, algorithm_configuration_id, status_id, started_date, finished_date)
         VALUES (nickriz_id, dataset_config_id, algo_config_id, training_status_completed_id,

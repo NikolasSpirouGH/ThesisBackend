@@ -103,9 +103,11 @@ public class AlgorithmUtil {
     }
 
     public static String resolveAlgorithmName(Training training) {
-        if (training.getCustomAlgorithmConfiguration() != null) {
+        if (training.getCustomAlgorithmConfiguration() != null
+                && training.getCustomAlgorithmConfiguration().getAlgorithm() != null) {
             return training.getCustomAlgorithmConfiguration().getAlgorithm().getName();
-        } else if (training.getAlgorithmConfiguration() != null) {
+        } else if (training.getAlgorithmConfiguration() != null
+                && training.getAlgorithmConfiguration().getAlgorithm() != null) {
             log.info("Algorithm name: {}", training.getAlgorithmConfiguration().getAlgorithm().getName());
             return training.getAlgorithmConfiguration().getAlgorithm().getName();
         }

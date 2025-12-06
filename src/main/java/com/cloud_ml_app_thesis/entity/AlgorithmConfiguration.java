@@ -23,7 +23,7 @@ public class AlgorithmConfiguration {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "algorithm_id")
     private Algorithm algorithm;
 

@@ -1,6 +1,8 @@
 package com.cloud_ml_app_thesis.util;
 
 import com.cloud_ml_app_thesis.config.MinioConfig;
+import com.cloud_ml_app_thesis.dto.dataset.DatasetColumnDTO;
+import com.cloud_ml_app_thesis.dto.dataset.DatasetColumnsResponse;
 import com.cloud_ml_app_thesis.entity.AlgorithmType;
 import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
@@ -418,6 +420,99 @@ public class DatasetUtil {
             if (data.instance(i).isMissing(attrIndex)) return true;
         }
         return false;
+    }
+
+    /**
+     * Parse dataset columns from a MultipartFile
+     * @param file The uploaded dataset file (CSV or ARFF)
+     * @return DatasetColumnsResponse with column information
+     * @throws Exception if parsing fails
+     */
+    public static DatasetColumnsResponse parseDatasetColumns(MultipartFile file) throws Exception {
+        // Create temp file
+        Path tempFile = Files.createTempFile("dataset_", file.getOriginalFilename());
+
+        try {
+            // Save uploaded file to temp location
+            file.transferTo(tempFile.toFile());
+
+            // Load dataset based on file extension
+            Instances data;
+            String filename = file.getOriginalFilename();
+
+            logger.info("📂 Parsing dataset file: {}", filename);
+            logger.info("📏 File size: {} bytes", file.getSize());
+
+            if (filename != null && filename.toLowerCase().endsWith(".arff")) {
+                logger.info("📋 Detected ARFF file, loading with ArffLoader");
+                ArffLoader loader = new ArffLoader();
+                loader.setFile(tempFile.toFile());
+                data = loader.getDataSet();
+            } else {
+                logger.info("📊 Detected CSV file, loading with CSVLoader (first row as headers)");
+                // Assume CSV - use first row as column names
+                CSVLoader loader = new CSVLoader();
+                loader.setFile(tempFile.toFile());
+                loader.setNoHeaderRowPresent(false);  // First row contains headers
+                data = loader.getDataSet();
+            }
+
+            logger.info("✅ Dataset loaded: {} attributes, {} instances", data.numAttributes(), data.numInstances());
+
+            // Log first few column names for debugging
+            if (data.numAttributes() > 0) {
+                logger.info("🔍 First 5 column names:");
+                for (int i = 0; i < Math.min(5, data.numAttributes()); i++) {
+                    logger.info("  Column {}: {}", i+1, data.attribute(i).name());
+                }
+            }
+
+            // Build column DTOs
+            List<DatasetColumnDTO> columns = new ArrayList<>();
+            for (int i = 0; i < data.numAttributes(); i++) {
+                Attribute attr = data.attribute(i);
+
+                DatasetColumnDTO column = DatasetColumnDTO.builder()
+                        .index(i + 1)  // 1-based index
+                        .name(attr.name())
+                        .type(getAttributeType(attr))
+                        .distinctValues(attr.isNominal() ? attr.numValues() : null)
+                        .build();
+
+                columns.add(column);
+            }
+
+            return DatasetColumnsResponse.builder()
+                    .columns(columns)
+                    .totalRows(data.numInstances())
+                    .totalColumns(data.numAttributes())
+                    .build();
+
+        } finally {
+            // Clean up temp file
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException e) {
+                logger.warn("Failed to delete temp file: {}", tempFile, e);
+            }
+        }
+    }
+
+    /**
+     * Get the type of a Weka attribute as a string
+     */
+    private static String getAttributeType(Attribute attr) {
+        if (attr.isNumeric()) {
+            return "numeric";
+        } else if (attr.isNominal()) {
+            return "nominal";
+        } else if (attr.isString()) {
+            return "string";
+        } else if (attr.isDate()) {
+            return "date";
+        } else {
+            return "unknown";
+        }
     }
 
 }

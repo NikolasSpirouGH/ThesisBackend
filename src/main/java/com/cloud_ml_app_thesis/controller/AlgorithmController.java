@@ -80,6 +80,18 @@ public class AlgorithmController {
         return ResponseEntity.ok(algorithmService.getAlgorithms());
     }
 
+    @Operation(summary = "Get Weka algorithm with parsed options", description = "Retrieve a Weka algorithm by ID with structured options")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Algorithm retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Algorithm not found")
+    })
+    @GetMapping("/weka/{id}/options")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<WekaAlgorithmDTO> getAlgorithmWithOptions(@PathVariable @Positive Integer id) {
+        WekaAlgorithmDTO algorithm = algorithmService.getAlgorithmWithOptions(id);
+        return ResponseEntity.ok(algorithm);
+    }
+
     @Operation(summary = "Get custom algorithms", description = "Retrieve custom algorithms owned by the user or public algorithms from other users")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Custom algorithms retrieved successfully"),
