@@ -30,6 +30,14 @@ def main():
 
         print("Model loaded successfully!")
 
+        # Load label mapping if it exists (for converting numeric predictions to class names)
+        label_mapping = None
+        label_mapping_path = os.path.join(model_dir, 'label_mapping.json')
+        if os.path.exists(label_mapping_path):
+            with open(label_mapping_path, 'r') as f:
+                label_mapping = json.load(f)
+            print(f"Label mapping loaded: {label_mapping}")
+
         # Load test dataset
         test_data_path = os.path.join(data_dir, 'test_data.csv')
         if not os.path.exists(test_data_path):
@@ -41,8 +49,10 @@ def main():
         # If last column contains '?' or similar placeholders, assume it's a target column and drop it
         if df.iloc[:, -1].astype(str).str.contains(r'^\?$', na=False).all():
             print(f"Detected placeholder target column (last column), dropping it for prediction")
-            X_test = df.iloc[:, :-1].values
+            X_test_df = df.iloc[:, :-1]  # Keep as DataFrame for headers
+            X_test = X_test_df.values
         else:
+            X_test_df = df  # Keep as DataFrame for headers
             X_test = df.values
         print(f"Test data loaded: {X_test.shape[0]} samples, {X_test.shape[1]} features")
 
@@ -56,18 +66,25 @@ def main():
         elif not isinstance(predictions, list):
             predictions = list(predictions)
 
+        # Convert numeric predictions back to class names if label mapping exists
+        if label_mapping is not None:
+            print(f"Converting numeric predictions to class names using label mapping...")
+            predictions = [label_mapping[int(pred)] if isinstance(pred, (int, np.integer, float, np.floating)) else pred
+                          for pred in predictions]
+            print(f"Sample predictions after conversion: {predictions[:5]}")
+
         print(f"Generated {len(predictions)} predictions")
 
         # Ensure output directory exists
         os.makedirs(model_dir, exist_ok=True)
 
-        # Save predictions to CSV in model directory (where service expects output)
-        predictions_df = pd.DataFrame({
-            'prediction': predictions
-        })
+        # Save predictions to CSV with all input features in model directory (where service expects output)
+        # Create output DataFrame with original features + predictions
+        output_df = X_test_df.copy()
+        output_df['prediction'] = predictions
 
         output_path = os.path.join(model_dir, 'predictions.csv')
-        predictions_df.to_csv(output_path, index=False)
+        output_df.to_csv(output_path, index=False)
 
         # Save prediction metadata
         metadata = {

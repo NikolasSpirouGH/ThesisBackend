@@ -275,6 +275,55 @@ public class KubernetesJobRunner implements ContainerRunner {
             throw new IllegalArgumentException("TAR file does not exist: " + tarPath);
         }
 
+        // Check if image already exists (optimization to skip re-loading)
+        try {
+            String checkPodName = "image-check-" + System.currentTimeMillis();
+            Pod checkPod = new PodBuilder()
+                    .withNewMetadata()
+                        .withName(checkPodName)
+                        .withNamespace(namespace)
+                    .endMetadata()
+                    .withNewSpec()
+                        .addNewContainer()
+                            .withName("checker")
+                            .withImage("docker:24-cli")
+                            .withCommand("sh", "-c", "docker images " + expectedTag + " | grep -v REPOSITORY")
+                            .addNewVolumeMount()
+                                .withName("docker-socket")
+                                .withMountPath("/var/run/docker.sock")
+                            .endVolumeMount()
+                            .withNewSecurityContext()
+                                .withPrivileged(true)
+                            .endSecurityContext()
+                        .endContainer()
+                        .withRestartPolicy("Never")
+                        .addNewVolume()
+                            .withName("docker-socket")
+                            .withNewHostPath()
+                                .withPath("/var/run/docker.sock")
+                                .withType("Socket")
+                            .endHostPath()
+                        .endVolume()
+                    .endSpec()
+                    .build();
+
+            kubernetesClient.pods().inNamespace(namespace).create(checkPod);
+            Pod completed = kubernetesClient.pods().inNamespace(namespace).withName(checkPodName)
+                    .waitUntilCondition(p -> p.getStatus() != null && p.getStatus().getPhase() != null
+                            && (p.getStatus().getPhase().equals("Succeeded") || p.getStatus().getPhase().equals("Failed")),
+                            30, TimeUnit.SECONDS);
+
+            String checkLogs = kubernetesClient.pods().inNamespace(namespace).withName(checkPodName).getLog();
+            kubernetesClient.pods().inNamespace(namespace).withName(checkPodName).delete();
+
+            if (checkLogs != null && !checkLogs.trim().isEmpty() && checkLogs.contains(expectedTag)) {
+                log.info("✅ Image {} already exists in Kubernetes cluster, skipping load", expectedTag);
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Could not check if image exists, will proceed with load: {}", e.getMessage());
+        }
+
         // Copy TAR to shared volume first
         Path relativeTar = sharedRoot.relativize(tarPath.toAbsolutePath().normalize());
         String tarPathInShared = "/shared/" + relativeTar.toString().replace('\\', '/');
@@ -340,7 +389,8 @@ public class KubernetesJobRunner implements ContainerRunner {
                     .withName(podName)
                     .waitUntilCondition(
                         pod -> {
-                            if (pod.getStatus() == null || pod.getStatus().getContainerStatuses() == null) {
+                            if (pod.getStatus() == null || pod.getStatus().getContainerStatuses() == null
+                                    || pod.getStatus().getContainerStatuses().isEmpty()) {
                                 return false;
                             }
                             ContainerStatus status = pod.getStatus().getContainerStatuses().get(0);
@@ -366,7 +416,8 @@ public class KubernetesJobRunner implements ContainerRunner {
 
             // Check exit code
             if (completedPod != null && completedPod.getStatus() != null
-                    && completedPod.getStatus().getContainerStatuses() != null) {
+                    && completedPod.getStatus().getContainerStatuses() != null
+                    && !completedPod.getStatus().getContainerStatuses().isEmpty()) {
                 ContainerStatus status = completedPod.getStatus().getContainerStatuses().get(0);
                 if (status.getState() != null && status.getState().getTerminated() != null) {
                     Integer exitCode = status.getState().getTerminated().getExitCode();
@@ -375,6 +426,10 @@ public class KubernetesJobRunner implements ContainerRunner {
                         throw new RuntimeException("Failed to load image from TAR (exitCode=" + exitCode + ")");
                     }
                 }
+            } else {
+                log.warn("⚠️ Pod completed but container statuses are not available. Pod phase: {}",
+                        completedPod != null && completedPod.getStatus() != null ?
+                                completedPod.getStatus().getPhase() : "UNKNOWN");
             }
 
             log.info("✅ Successfully loaded image: {}", expectedTag);

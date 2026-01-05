@@ -182,16 +182,26 @@ public class CustomTrainingService {
 
             String dockerImageTag;
             if (activeImage.getDockerTarKey() != null) {
-                // Load TAR image
-                Path tarPath = minioService.downloadObjectToTempFile(
+                // Load TAR image - first download to /tmp
+                Path tarPathTemp = minioService.downloadObjectToTempFile(
                         bucketResolver.resolve(BucketTypeEnum.CUSTOM_ALGORITHM),
                         activeImage.getDockerTarKey()
                 );
-                log.info("📦 TAR image downloaded from MinIO: {}", tarPath);
+                log.info("📦 TAR image downloaded from MinIO to temp: {}", tarPathTemp);
 
-                dockerImageTag = username + "/" + algorithm.getName() + ":" + activeImage.getVersion();
+                // Copy TAR to shared volume so loader pod can access it
+                Path sharedRoot = pathResolver.getSharedPathRoot();
+                Path tarPathShared = sharedRoot.resolve(tarPathTemp.getFileName());
+                Files.copy(tarPathTemp, tarPathShared, StandardCopyOption.REPLACE_EXISTING);
+                log.info("📋 TAR image copied to shared volume: {}", tarPathShared);
+
+                // Clean up temp file
+                Files.deleteIfExists(tarPathTemp);
+
+                // Docker tags must be lowercase
+                dockerImageTag = username.toLowerCase() + "/" + algorithm.getName().toLowerCase() + ":" + activeImage.getVersion().toLowerCase();
                 log.info("TAR image tag: {}", dockerImageTag);
-                containerRunner.loadImageFromTar(tarPath, dockerImageTag);
+                containerRunner.loadImageFromTar(tarPathShared, dockerImageTag);
             } else if (StringUtils.isNotBlank(activeImage.getDockerHubUrl())) {
                 dockerImageTag = activeImage.getDockerHubUrl();
                 log.info("Docker Image with docker hub tag: {}", dockerImageTag);

@@ -38,9 +38,11 @@ def main():
         y_raw = df.iloc[:, -1]
 
         # Convert target to numeric if it's categorical (strings)
+        label_mapping = None
         if y_raw.dtype == 'object' or y_raw.dtype.name == 'category':
             # Map categorical values to numeric (0, 1, 2, ...)
-            y, label_mapping = pd.factorize(y_raw)
+            y, label_mapping_index = pd.factorize(y_raw)
+            label_mapping = label_mapping_index.tolist()  # Convert to list for JSON serialization
             print(f"Converted categorical target: {dict(enumerate(label_mapping))}")
         else:
             y = y_raw.values
@@ -67,6 +69,13 @@ def main():
             pickle.dump(model, f)
 
         print(f"Model saved to {model_path}")
+
+        # Save label mapping if it exists (for converting predictions back to class names)
+        if label_mapping is not None:
+            label_mapping_path = os.path.join(model_dir, 'label_mapping.json')
+            with open(label_mapping_path, 'w') as f:
+                json.dump(label_mapping, f, indent=2)
+            print(f"Label mapping saved to {label_mapping_path}: {label_mapping}")
 
         # Save training metadata
         metadata = {

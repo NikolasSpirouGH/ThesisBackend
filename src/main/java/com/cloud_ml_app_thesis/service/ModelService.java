@@ -390,10 +390,12 @@ public class ModelService {
 
         String algorithmName = null;
         String algorithmType = null;
-        if (training.getAlgorithmConfiguration() != null) {
+        if (training.getAlgorithmConfiguration() != null && training.getAlgorithmConfiguration().getAlgorithm() != null) {
             algorithmName = training.getAlgorithmConfiguration().getAlgorithm().getName();
-            algorithmType = training.getAlgorithmConfiguration().getAlgorithmType().getName().toString();
-        } else if (training.getCustomAlgorithmConfiguration() != null) {
+            algorithmType = training.getAlgorithmConfiguration().getAlgorithmType() != null
+                    ? training.getAlgorithmConfiguration().getAlgorithmType().getName().toString()
+                    : null;
+        } else if (training.getCustomAlgorithmConfiguration() != null && training.getCustomAlgorithmConfiguration().getAlgorithm() != null) {
             algorithmName = training.getCustomAlgorithmConfiguration().getAlgorithm().getName();
             // Custom algorithms don't have an algorithm type specified
         }
