@@ -17,7 +17,7 @@ import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
-import com.cloud_ml_app_thesis.util.DockerContainerRunner;
+import com.cloud_ml_app_thesis.util.ContainerRunner;
 import com.cloud_ml_app_thesis.util.FileUtil;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
@@ -55,7 +55,7 @@ public class CustomModelExecutionService {
     private final ModelExecutionStatusRepository modelExecutionStatusRepository;
     private final ModelExecutionRepository modelExecutionRepository;
     private final ModelService modelService;
-    private final DockerContainerRunner dockerContainerRunner;
+    private final ContainerRunner containerRunner;
     private final TaskStatusService taskStatusService;
     private final EntityManager entityManager;
     private final TransactionTemplate transactionTemplate;
@@ -153,14 +153,14 @@ public class CustomModelExecutionService {
 
             // Extract algorithm.py from the user's Docker image to /data directory
             try {
-                dockerContainerRunner.copyFileFromImage(activeImage.getName(), "/app/algorithm.py", dataDir.resolve("algorithm.py"));
+                containerRunner.copyFileFromImage(activeImage.getName(), "/app/algorithm.py", dataDir.resolve("algorithm.py"));
                 log.info("✅ Extracted algorithm.py from Docker image for prediction");
             } catch (Exception e) {
                 log.error("❌ Failed to extract algorithm.py for prediction: {}", e.getMessage());
                 throw new RuntimeException("Could not extract algorithm.py for prediction", e);
             }
 
-            dockerContainerRunner.runPredictionContainer(activeImage.getName(), dataDir, outputDir);
+            containerRunner.runPredictionContainer(activeImage.getName(), dataDir, outputDir);
 
             // 6. Βρες output αρχείο
             File predictedFile = Files.walk(outputDir)

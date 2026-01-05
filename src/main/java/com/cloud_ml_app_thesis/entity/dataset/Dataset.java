@@ -27,7 +27,8 @@ import java.util.Set;
 public class Dataset {
     //CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "datasets_id_seq")
+    @SequenceGenerator(name = "datasets_id_seq", sequenceName = "datasets_id_seq", allocationSize = 1)
     @Column(name = "id", updatable = false, nullable = false)
     private Integer id;
 

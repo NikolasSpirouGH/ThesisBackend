@@ -17,7 +17,8 @@ import java.time.ZonedDateTime;
 @Table(name = "dataset_copies")
 public class DatasetCopy {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "dataset_copies_id_seq")
+    @SequenceGenerator(name = "dataset_copies_id_seq", sequenceName = "dataset_copies_id_seq", allocationSize = 1)
     private Integer id;
 
     @ManyToOne

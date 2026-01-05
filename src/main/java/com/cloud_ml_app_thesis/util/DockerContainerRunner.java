@@ -30,8 +30,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@Component
-public class DockerContainerRunner {
+@Component("dockerRunner")
+public class DockerContainerRunner implements ContainerRunner {
 
     private final DockerClient dockerClient;
     private volatile String cachedSharedVolumeName;
@@ -66,6 +66,7 @@ public class DockerContainerRunner {
         return "unix:///var/run/docker.sock";
     }
 
+    @Override
     public void runTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir) {
         log.info("🐳 Starting training container using image='{}'", imageName);
 
@@ -142,6 +143,7 @@ public class DockerContainerRunner {
     }
 
 
+    @Override
     public void runPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir) {
         log.info("🚀 Starting prediction container with image={}", imageName);
         String sharedVolumeName = resolveSharedVolumeName();
@@ -190,6 +192,11 @@ public class DockerContainerRunner {
         log.info("✅ Prediction container finished successfully");
     }
 
+
+    @Override
+    public void loadImageFromTar(Path tarPath, String expectedTag) {
+        loadDockerImageFromTar(tarPath, expectedTag);
+    }
 
     public void loadDockerImageFromTar(Path tarPath, String expectedTag) {
         log.info("🐳 Loading Docker image from TAR (simple approach): {}", tarPath);
@@ -372,6 +379,7 @@ public class DockerContainerRunner {
     /**
      * Copy a file from a Docker image to the host filesystem
      */
+    @Override
     public void copyFileFromImage(String imageName, String sourcePathInImage, Path destPathOnHost) {
         log.info("📋 Copying file from Docker image: {} -> {}", sourcePathInImage, destPathOnHost);
 
@@ -422,6 +430,11 @@ public class DockerContainerRunner {
                 log.warn("⚠️ Failed to cleanup temporary container {}: {}", containerId, e.getMessage());
             }
         }
+    }
+
+    @Override
+    public void pullImage(String imageName) {
+        pullDockerImage(imageName);
     }
 
     public void pullDockerImage(String imageName) {

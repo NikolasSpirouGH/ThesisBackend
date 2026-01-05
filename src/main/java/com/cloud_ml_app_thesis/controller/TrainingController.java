@@ -103,6 +103,7 @@ public class TrainingController {
             @ApiResponse(responseCode = "400", description = "Invalid request data"),
             @ApiResponse(responseCode = "500", description = "Training task failed to start")
     })
+    @PreAuthorize("isAuthenticated()")
     @PostMapping("/train-model")
     public ResponseEntity<GenericResponse<?>> trainModel(@Valid @ModelAttribute TrainingStartRequest request, @AuthenticationPrincipal AccountDetails accountDetails) {
 
@@ -114,7 +115,7 @@ public class TrainingController {
     }
 
     @PostMapping(value = "/custom", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated")
     @Operation(
             summary = "User Defined Training Management",
             description = """
@@ -155,6 +156,7 @@ public class TrainingController {
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "500", description = "Server error")
     })
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get trainings for the current user with optional filters")
     public ResponseEntity<List<TrainingDTO>> getTrainings(
             @Parameter(description = "Start date (yyyy-MM-dd)", example = "2025-07-01")@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
@@ -189,6 +191,7 @@ public class TrainingController {
     }
 
     @GetMapping("/retrain/models/{modelId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<RetrainTrainingDetailsDTO> getRetrainModelDetails(
             @PathVariable Integer modelId,
             @AuthenticationPrincipal AccountDetails accountDetails) {
@@ -203,6 +206,7 @@ public class TrainingController {
             @ApiResponse(responseCode = "500", description = "Server error")
     })
     @DeleteMapping("delete/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<String>> deleteTrain(@PathVariable Integer id, @AuthenticationPrincipal AccountDetails accountDetails) {
         trainService.deleteTrain(id, accountDetails.getUser());
         return ResponseEntity.accepted().body(GenericResponse.success(
@@ -211,6 +215,7 @@ public class TrainingController {
     }
 
     @GetMapping("/used-algorithms")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get algorithms used by the user", description = "Returns algorithms that the user has actually used in their trainings")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Algorithms retrieved successfully"),

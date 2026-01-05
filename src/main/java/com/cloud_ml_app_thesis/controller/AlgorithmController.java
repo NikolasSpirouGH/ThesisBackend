@@ -65,7 +65,7 @@ public class AlgorithmController {
             @ApiResponse(responseCode = "500", description = "Server error while creating algorithm")
     })
     @PostMapping(value = "/createCustomAlgorithm")
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<Integer>> createAlgorithm(
             @Valid @ModelAttribute CustomAlgorithmCreateRequest request,
             @AuthenticationPrincipal AccountDetails accountDetails){

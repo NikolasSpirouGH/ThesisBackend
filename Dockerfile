@@ -6,15 +6,14 @@ COPY .mvn .mvn
 COPY mvnw .
 COPY pom.xml .
 
-# Προεγκατάσταση εξαρτήσεων για πιο γρήγορο startup
+# Pre-install dependencies for faster startup
 RUN ./mvnw dependency:go-offline
 
-# Create target directory and set permissions for non-root users
-RUN mkdir -p /app/target && \
-    chmod -R 777 /app
+COPY src ./src
 
-# Εκθέτουμε τα ports
-EXPOSE 8080 5005
+# Package the application
+RUN ./mvnw clean package -DskipTests
 
-# CMD για dev: spring-boot:run
-CMD ["./mvnw", "spring-boot:run"]
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "target/mlapp-0.0.1-SNAPSHOT.jar"]

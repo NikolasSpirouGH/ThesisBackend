@@ -44,7 +44,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(cors->{})
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/algorithms/get-algorithms", "/api/algorithms/weka/*/options", "/api/train/parse-dataset-columns", "/api/auth/**", "/swagger-ui/**","/swagger-ui.html","/v3/api-docs/**", "/api/users/forgot-password", "/api/users/reset-password","/rapidoc.html","/redoc.html", "/actuator/health").permitAll()
+                        .requestMatchers("/api/algorithms/get-algorithms", "/api/algorithms/weka/*/options", "/api/train/parse-dataset-columns", "/api/auth/**", "/swagger-ui/**","/swagger-ui.html","/v3/api-docs/**", "/api/users/forgot-password", "/api/users/reset-password","/rapidoc.html","/redoc.html", "/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
@@ -59,6 +59,7 @@ public class SecurityConfig {
         config.setAllowCredentials(true);
         config.setAllowedOrigins(List.of(
                 "http://localhost:5173",   // React frontend
+                "http://localhost:5174",   // React frontend (alternate port)
                 "http://localhost:8080",   // Redoc loaded from Spring static folder
                 "null"                     // Redoc loaded from file://
         ));

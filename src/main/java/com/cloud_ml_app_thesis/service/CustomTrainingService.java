@@ -54,7 +54,7 @@ import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.TrainingRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
-import com.cloud_ml_app_thesis.util.DockerContainerRunner;
+import com.cloud_ml_app_thesis.util.ContainerRunner;
 import com.cloud_ml_app_thesis.util.FileUtil;
 import com.nimbusds.oauth2.sdk.util.StringUtils;
 
@@ -75,7 +75,7 @@ public class CustomTrainingService {
     private final MinioService minioService;
     private final TrainingRepository trainingRepository;
     private final ModelService modelService;
-    private final DockerContainerRunner dockerCommandRunner;
+    private final ContainerRunner containerRunner;
     private final TrainingStatusRepository trainingStatusRepository;
     private final TaskStatusRepository taskStatusRepository;
     private final ModelTypeRepository modelTypeRepository;
@@ -191,11 +191,11 @@ public class CustomTrainingService {
 
                 dockerImageTag = username + "/" + algorithm.getName() + ":" + activeImage.getVersion();
                 log.info("TAR image tag: {}", dockerImageTag);
-                dockerCommandRunner.loadDockerImageFromTar(tarPath, dockerImageTag);
+                containerRunner.loadImageFromTar(tarPath, dockerImageTag);
             } else if (StringUtils.isNotBlank(activeImage.getDockerHubUrl())) {
                 dockerImageTag = activeImage.getDockerHubUrl();
                 log.info("Docker Image with docker hub tag: {}", dockerImageTag);
-                dockerCommandRunner.pullDockerImage(dockerImageTag);
+                containerRunner.pullImage(dockerImageTag);
             } else {
                 task.setStatus(TaskStatusEnum.FAILED);
                 task.setErrorMessage("No image source found");
@@ -298,7 +298,7 @@ public class CustomTrainingService {
 
             // Extract algorithm.py from the user's Docker image to /data directory
             try {
-                dockerCommandRunner.copyFileFromImage(dockerImageTag, "/app/algorithm.py", dataDir.resolve("algorithm.py"));
+                containerRunner.copyFileFromImage(dockerImageTag, "/app/algorithm.py", dataDir.resolve("algorithm.py"));
                 log.info("✅ Extracted algorithm.py from Docker image to /data");
             } catch (Exception e) {
                 log.error("❌ Failed to extract algorithm.py from Docker image: {}", e.getMessage());
@@ -327,7 +327,7 @@ public class CustomTrainingService {
                 throw new UserInitiatedStopException("User requested stop before Docker training for task " + taskId);
             }
             // Run training container
-            dockerCommandRunner.runTrainingContainer(dockerImageTag, dataDir, outputDir);
+            containerRunner.runTrainingContainer(dockerImageTag, dataDir, outputDir);
 
             log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
             log.info("✅ Copied dataset.csv");

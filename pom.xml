@@ -154,6 +154,13 @@
             <version>3.5.1</version>
         </dependency>
 
+        <!-- Kubernetes Client for K8s Job management -->
+        <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>kubernetes-client</artifactId>
+            <version>6.13.1</version>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-compress</artifactId>

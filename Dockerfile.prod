@@ -1,0 +1,37 @@
+# Multi-stage build for production
+
+# Stage 1: Build the application
+FROM eclipse-temurin:21-jdk as builder
+
+WORKDIR /app
+
+# Copy Maven wrapper and pom.xml
+COPY .mvn .mvn
+COPY mvnw .
+COPY pom.xml .
+
+# Download dependencies (cached layer)
+RUN ./mvnw dependency:go-offline
+
+# Copy source code
+COPY src ./src
+
+# Build the application (skip tests for faster builds)
+RUN ./mvnw clean package -DskipTests
+
+# Stage 2: Runtime
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+
+# Copy the JAR from builder stage
+COPY --from=builder /app/target/*.jar app.jar
+
+# Create directory for shared storage
+RUN mkdir -p /app/shared && chmod -R 777 /app/shared
+
+# Expose port
+EXPOSE 8080
+
+# Run the JAR
+ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -31,18 +31,6 @@ public class JwtTokenFilter extends OncePerRequestFilter {
     private final AccountDetailsService accountDetailsService;
 
 
-    //    @Override
-//    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-//            throws ServletException, IOException {
-//        String token = jwtTokenProvider.resolveToken(request);
-//        if (token != null && jwtTokenProvider.validateToken(token)) {
-//            Authentication auth = jwtTokenProvider.getAuthentication(token);
-//            if (auth != null) {
-//                SecurityContextHolder.getContext().setAuthentication(auth);
-//            }
-//        }
-//        filterChain.doFilter(request, response);
-//    }
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -53,8 +41,15 @@ public class JwtTokenFilter extends OncePerRequestFilter {
         final String jwt;
         final String username;
 
+        String path = request.getRequestURI();
+
+        if (path.startsWith("/actuator")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            log.debug("🛑 No Authorization header or not Bearer");
+            // Optional: remove this log entirely
             filterChain.doFilter(request, response);
             return;
         }

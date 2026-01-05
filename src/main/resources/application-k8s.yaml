@@ -1,0 +1,50 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    defer-datasource-initialization: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+minio:
+  access:
+    name: ${MINIO_ACCESS_KEY}
+    secret: ${MINIO_SECRET_KEY}
+  url: http://${MINIO_HOST}:${MINIO_PORT}
+  bucket:
+    datasets: ${MINIO_BUCKET_DATASETS}
+    algorithms: ${MINIO_BUCKET_ALGORITHMS}
+    models: ${MINIO_BUCKET_MODELS}
+    predictions: ${MINIO_BUCKET_PREDICTIONS}
+    results: ${MINIO_BUCKET_PREDICTION_RESULTS}
+    metrics: ${MINIO_BUCKET_METRICS}
+    parameters: ${MINIO_BUCKET_PARAMETERS}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.cloud_ml_app_thesis: DEBUG
