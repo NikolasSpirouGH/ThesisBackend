@@ -63,7 +63,7 @@ public class AuthService {
     private final JavaMailSender mailSender;
     private final PasswordResetTokenRepository tokenRepository;
 
-    @Value("${app.frontend.reset-password-url:http://localhost:5173/#/reset-password}")
+    @Value("${app.frontend.reset-password-url:http://localhost:5174/#/reset-password}")
     private String resetPasswordUrl;
 
 

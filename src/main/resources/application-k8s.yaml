@@ -25,9 +25,9 @@ spring:
     properties:
       mail:
         smtp:
-          auth: true
+          auth: false  # MailHog doesn't require authentication
           starttls:
-            enable: true
+            enable: false  # MailHog doesn't use STARTTLS
 
 minio:
   access:
