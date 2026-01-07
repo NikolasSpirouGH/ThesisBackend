@@ -81,9 +81,7 @@ public class CategoryController {
     public ResponseEntity<GenericResponse<?>> getPendingCategoryRequests(@AuthenticationPrincipal AccountDetails accountDetails) {
         boolean isAdminOrManager = accountDetails.getAuthorities().stream()
                 .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
-                               || auth.getAuthority().equals("ROLE_ADMIN")
-                               || auth.getAuthority().equals("CATEGORY_MANAGER")
-                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+                               || auth.getAuthority().equals("CATEGORY_MANAGER"));
 
         if (!isAdminOrManager) {
             throw new AccessDeniedException("Admin or Category Manager access required");
@@ -103,9 +101,7 @@ public class CategoryController {
     public ResponseEntity<GenericResponse<?>> getAllCategoryRequests(@AuthenticationPrincipal AccountDetails accountDetails) {
         boolean isAdminOrManager = accountDetails.getAuthorities().stream()
                 .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
-                               || auth.getAuthority().equals("ROLE_ADMIN")
-                               || auth.getAuthority().equals("CATEGORY_MANAGER")
-                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+                               || auth.getAuthority().equals("CATEGORY_MANAGER"));
 
         if (!isAdminOrManager) {
             throw new AccessDeniedException("Admin or Category Manager access required");
@@ -127,7 +123,7 @@ public class CategoryController {
             @Parameter(description = "ID of the category to delete") @PathVariable @Positive Integer id) {
 
         boolean isAdmin = accountDetails.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("ROLE_ADMIN"));
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN"));
 
         if (!isAdmin) {
             throw new AccessDeniedException("Admin access required");
@@ -170,9 +166,7 @@ public class CategoryController {
 
         boolean isAdminOrManager = accountDetails.getAuthorities().stream()
                 .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
-                               || auth.getAuthority().equals("ROLE_ADMIN")
-                               || auth.getAuthority().equals("CATEGORY_MANAGER")
-                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+                               || auth.getAuthority().equals("CATEGORY_MANAGER"));
 
         if (!isAdminOrManager) {
             throw new AccessDeniedException("Admin or Category Manager access required");
@@ -197,9 +191,7 @@ public class CategoryController {
 
         boolean isAdminOrManager = accountDetails.getAuthorities().stream()
                 .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
-                               || auth.getAuthority().equals("ROLE_ADMIN")
-                               || auth.getAuthority().equals("CATEGORY_MANAGER")
-                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+                               || auth.getAuthority().equals("CATEGORY_MANAGER"));
 
         if (!isAdminOrManager) {
             throw new AccessDeniedException("Admin or Category Manager access required");
@@ -225,9 +217,7 @@ public class CategoryController {
 
         boolean isAdminOrManager = accountDetails.getAuthorities().stream()
                 .anyMatch(auth -> auth.getAuthority().equals("ADMIN")
-                               || auth.getAuthority().equals("ROLE_ADMIN")
-                               || auth.getAuthority().equals("CATEGORY_MANAGER")
-                               || auth.getAuthority().equals("ROLE_CATEGORY_MANAGER"));
+                               || auth.getAuthority().equals("CATEGORY_MANAGER"));
 
         if (!isAdminOrManager) {
             throw new AccessDeniedException("Admin or Category Manager access required");

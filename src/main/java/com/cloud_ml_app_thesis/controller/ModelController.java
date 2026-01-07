@@ -52,7 +52,7 @@ public class ModelController {
     public ResponseEntity<List<ModelDTO>> getAccessibleModels(@AuthenticationPrincipal AccountDetails accountDetails) {
         User user = accountDetails.getUser();
         boolean isAdmin = accountDetails.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("ROLE_ADMIN"));
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN"));
 
         List<ModelDTO> models = isAdmin
                 ? modelService.getAllModels()

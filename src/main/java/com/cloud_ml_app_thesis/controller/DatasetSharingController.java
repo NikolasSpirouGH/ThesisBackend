@@ -61,7 +61,7 @@ public class DatasetSharingController {
     }
 
     @PostMapping("/{datasetId}/decline")
-    @PreAuthorize("hasAnyRole('USER', 'DATASET_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyAuthority('USER', 'DATASET_MANAGER', 'ADMIN')")
     public ResponseEntity<Void> declineDatasetShare(
             @PathVariable Integer datasetId,
             @RequestParam(required = false) @Size(max = 50) String targetUsername,

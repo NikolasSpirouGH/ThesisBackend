@@ -49,16 +49,16 @@ public class BasicFullCustomFlowIT {
 
     @Order(1)
     void shouldCreateCustomAlgorithm() throws IOException {
-        File parametersFile = new ClassPathResource("logistic_regression/parameters.json").getFile();
-        File dockerTarFile = new ClassPathResource("logistic_regression/my-logistic-algorithm.tar").getFile();
+        File parametersFile = new ClassPathResource("custom_test/customer_purchase_predictor/parameters.json").getFile();
+        File dockerTarFile = new ClassPathResource("custom_test/customer_purchase_predictor/customer_purchase_predictor.tar").getFile();
 
         Response response = given()
                 .auth().oauth2(jwtToken)
-                .multiPart("name", "testalgo")
-                .multiPart("description", "test description")
+                .multiPart("name", "customer_purchase_predictor")
+                .multiPart("description", "Predicts customer purchase based on age, income, and visits")
                 .multiPart("version", "1.0.0")
                 .multiPart("accessibility", "PUBLIC")
-                .multiPart("keywords", "ml", "classification")
+                .multiPart("keywords", "ml", "classification", "customer")
                 .multiPart("parametersFile", parametersFile)
                 .multiPart("dockerTarFile",dockerTarFile)
                 //.multiPart("dockerHubUrl", "paradoxsenpai/logreg:1.0.0")
@@ -84,7 +84,7 @@ public class BasicFullCustomFlowIT {
     void shouldTrainCustomModel() throws IOException {
         Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
 
-        File datasetFile = new ClassPathResource("logistic_regression/train.csv").getFile();
+        File datasetFile = new ClassPathResource("custom_test/customer_purchase_predictor/training_data.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
@@ -141,7 +141,7 @@ public class BasicFullCustomFlowIT {
                 .header("Authorization", "Bearer " + jwtToken)
                 .contentType(ContentType.JSON)
                 .body(finalizePayload)
-                .post("/api/models/{modelId}/model", modelId)
+                .post("/api/models/finalize/{modelId}", modelId)
                 .then()
                 .statusCode(200)
                 .body("message", containsString("Model finalized successfully"))
@@ -162,7 +162,7 @@ public class BasicFullCustomFlowIT {
     void shouldPredictCustomModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
 
-        File predictionFile = new ClassPathResource("datasets/prediction_nominal_custom.csv").getFile();
+        File predictionFile = new ClassPathResource("custom_test/customer_purchase_predictor/prediction_data.csv").getFile();
 
         Response predictionResponse = given()
                 .header("Authorization", "Bearer " + jwtToken)

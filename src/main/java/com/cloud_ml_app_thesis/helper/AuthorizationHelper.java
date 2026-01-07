@@ -8,23 +8,23 @@ import org.springframework.stereotype.Component;
 public class AuthorizationHelper {
 
     public boolean isAdmin(UserDetails UserDetails) {
-        return hasRole(UserDetails, "ROLE_ADMIN");
+        return hasRole(UserDetails, "ADMIN");
     }
 
     public boolean isDatasetManager(UserDetails UserDetails) {
-        return hasRole(UserDetails, "ROLE_DATASET_MANAGER");
+        return hasRole(UserDetails, "DATASET_MANAGER");
     }
 
     public boolean isAlgorithmManager(UserDetails UserDetails) {
-        return hasRole(UserDetails, "ROLE_ALGORITHM_MANAGER");
+        return hasRole(UserDetails, "ALGORITHM_MANAGER");
     }
 
     public boolean isModelManager(UserDetails UserDetails) {
-        return hasRole(UserDetails, "ROLE_MODEL_MANAGER");
+        return hasRole(UserDetails, "TRAINING_MODEL_MANAGER");
     }
 
     public boolean isUser(UserDetails UserDetails) {
-        return hasRole(UserDetails, "ROLE_USER");
+        return hasRole(UserDetails, "USER");
     }
 
     public boolean isSuperDatasetUser(UserDetails UserDetails) {

@@ -1,5 +1,5 @@
 -- ====================================================
--- Flyway Migration V1: Initialize Reference/Lookup Data
+-- V2: Initialize Reference/Lookup Data (Consolidated)
 -- Purpose: Set up all CONST tables and system users
 -- ====================================================
 
@@ -66,7 +66,16 @@ INSERT INTO const_model_accessibilites (name, description) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================
--- 7. ALGORITHM ACCESSIBILITY
+-- 7. MODEL EXECUTION ACCESSIBILITY
+-- ============================================
+INSERT INTO const_model_execution_accessibilities (name, description) VALUES
+    ('PUBLIC', 'Execution results are publicly accessible'),
+    ('PRIVATE', 'Execution results are private'),
+    ('RESTRICTED', 'Execution results have restricted access')
+ON CONFLICT (name) DO NOTHING;
+
+-- ============================================
+-- 8. ALGORITHM ACCESSIBILITY
 -- ============================================
 INSERT INTO const_algorithm_accessibilities (name, description) VALUES
     ('PUBLIC', 'Algorithm is publicly accessible'),
@@ -74,7 +83,7 @@ INSERT INTO const_algorithm_accessibilities (name, description) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================
--- 8. ALGORITHM TYPES
+-- 9. ALGORITHM TYPES
 -- ============================================
 INSERT INTO const_algorithm_types (name) VALUES
     ('CLASSIFICATION'),
@@ -83,7 +92,7 @@ INSERT INTO const_algorithm_types (name) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================
--- 9. MODEL TYPES
+-- 10. MODEL TYPES
 -- ============================================
 INSERT INTO const_model_types (name) VALUES
     ('CUSTOM'),
@@ -91,7 +100,7 @@ INSERT INTO const_model_types (name) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================
--- 10. MODEL EXECUTION STATUSES
+-- 11. MODEL EXECUTION STATUSES
 -- ============================================
 INSERT INTO const_model_exec_statuses (name, description) VALUES
     ('PENDING', 'Execution is pending'),
@@ -101,7 +110,7 @@ INSERT INTO const_model_exec_statuses (name, description) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================
--- 11. CATEGORY REQUEST STATUSES
+-- 12. CATEGORY REQUEST STATUSES
 -- ============================================
 INSERT INTO const_category_request_statuses (name, description) VALUES
     ('PENDING', 'The request is Pending'),
@@ -110,7 +119,23 @@ INSERT INTO const_category_request_statuses (name, description) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================
--- 12. SYSTEM ADMIN USERS
+-- 13. DATASET SHARE ACTION TYPES
+-- ============================================
+INSERT INTO const_dataset_share_action_types (name, description) VALUES
+    ('SHARED', 'Dataset was shared'),
+    ('UNSHARED', 'Dataset sharing was revoked')
+ON CONFLICT (name) DO NOTHING;
+
+-- ============================================
+-- 14. MODEL SHARE ACTION TYPES
+-- ============================================
+INSERT INTO const_model_share_action_types (name, description) VALUES
+    ('SHARED', 'Model was shared'),
+    ('UNSHARED', 'Model sharing was revoked')
+ON CONFLICT (name) DO NOTHING;
+
+-- ============================================
+-- 15. SYSTEM ADMIN USERS
 -- ============================================
 -- Passwords:
 --   bigspy & johnken: "adminPassword"
@@ -157,7 +182,7 @@ WHERE u.username = 'johnken' AND r.name = 'ADMIN'
 ON CONFLICT DO NOTHING;
 
 -- ============================================
--- 13. DEFAULT CATEGORY
+-- 16. DEFAULT CATEGORY
 -- ============================================
 INSERT INTO categories (id, name, description, created_by, deleted)
 VALUES (
@@ -171,3 +196,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Reset the sequence to avoid conflicts with future inserts
 SELECT setval('categories_id_seq', (SELECT MAX(id) FROM categories));
+
+-- ====================================================
+-- END OF REFERENCE DATA
+-- ====================================================

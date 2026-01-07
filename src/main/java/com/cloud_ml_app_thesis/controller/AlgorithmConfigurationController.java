@@ -35,7 +35,7 @@ public class AlgorithmConfigurationController {
     private final AlgorithmConfigurationService algorithmConfigurationService;
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<String> deleteAlgorithm(@AuthenticationPrincipal UserDetails userDetails, @PathVariable @Positive Integer id) {
         boolean deleted = algorithmConfigurationService.deleteAlgorithmConfiguration(id);
         if(!deleted){
@@ -50,7 +50,7 @@ public class AlgorithmConfigurationController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ALGORITHM_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ALGORITHM_MANAGER', 'ADMIN')")
     public ResponseEntity<AlgorithmConfiguration> updateAlgorithm(@AuthenticationPrincipal UserDetails userDetails, @PathVariable @Positive Integer id, @Valid @RequestBody AlgorithmConfigurationUpdateRequest request) {
         List<String> userRoles = userDetails.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)

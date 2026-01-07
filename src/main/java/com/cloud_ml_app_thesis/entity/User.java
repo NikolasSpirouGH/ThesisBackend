@@ -81,5 +81,20 @@ public class User {
     @JsonIgnore
     private List<AlgorithmConfiguration> algorithmConfigurations;
 
+    @OneToMany(mappedBy = "user")
+    @JsonIgnore
+    private List<CustomAlgorithmConfiguration> customAlgorithmConfigurations;
+
+    @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
+    private List<CustomAlgorithm> customAlgorithms;
+
+    @OneToMany(mappedBy = "user")
+    @JsonIgnore
+    private List<JwtToken> jwtTokens;
+
+    @OneToOne(mappedBy = "user")
+    @JsonIgnore
+    private PasswordResetToken passwordResetToken;
 
 }

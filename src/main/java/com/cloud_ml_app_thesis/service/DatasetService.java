@@ -107,7 +107,7 @@ public class DatasetService {
         String username = isAuthenticated ? authentication.getName() : null;
 
         boolean hasExplicitAccess = isAuthenticated && authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN") || auth.getAuthority().equals("ROLE_DATASET_MANAGER"));
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("DATASET_MANAGER"));
 
         // Enforce validation rules before executing query
         if (!isAuthenticated) {
@@ -421,4 +421,3 @@ public class DatasetService {
         log.info("Dataset deleted successfully from database: ID={}", datasetId);
     }
 }
-

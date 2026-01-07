@@ -46,7 +46,7 @@ public class BasicFullWekaFlowIT {
     @Test
     @Order(1)
     void shouldTrainDataWithWekaAlgorithm() throws IOException {
-        File trainFile = new ClassPathResource("datasets/Logistic_Regression/Logistic_Regression_-_Training__logreg_train_csv_.csv").getFile();
+        File trainFile = new ClassPathResource("weka_test/Logistic_Regression/Logistic_Regression_-_Training__logreg_train_csv_.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
@@ -103,7 +103,7 @@ public class BasicFullWekaFlowIT {
                 .header("Authorization", "Bearer " + jwtToken)
                 .contentType(ContentType.JSON)
                 .body(finalizePayload)
-                .post("/api/models/{modelId}/model", modelId)
+                .post("/api/models/finalize/{modelId}", modelId)
                 .then()
                 .statusCode(200)
                 .body("message", containsString("Model finalized successfully"))
@@ -121,7 +121,7 @@ public class BasicFullWekaFlowIT {
     @Order(3)
     void shouldPredictModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
-        File predictionFile = new ClassPathResource("datasets/Logistic_Regression/Logistic_Regression_-_Prediction__logreg_predict_csv_.csv").getFile();
+        File predictionFile = new ClassPathResource("weka_test/Logistic_Regression/Logistic_Regression_-_Prediction__logreg_predict_csv_.csv").getFile();
 
         Response predictionResponse = given()
                 .header("Authorization", "Bearer " + jwtToken)

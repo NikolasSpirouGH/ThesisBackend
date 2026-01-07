@@ -166,7 +166,7 @@ public class TrainingController {
 
         User user = accountDetails.getUser();
         boolean isAdmin = accountDetails.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("ROLE_ADMIN"));
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN"));
 
         List<TrainingDTO> trainings = isAdmin
                 ? trainService.findAllTrainings(fromDate, algorithmId, type)

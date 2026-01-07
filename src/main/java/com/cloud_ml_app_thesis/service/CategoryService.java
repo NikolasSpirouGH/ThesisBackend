@@ -354,7 +354,7 @@ public class CategoryService {
 
     private CategoryDTO mapCategoryToDto(Category category) {
         CategoryDTO dto = modelMapper.map(category, CategoryDTO.class);
-        dto.setCreatedByUsername(category.getCreatedBy().getUsername());
+        dto.setCreatedByUsername(category.getCreatedBy() != null ? category.getCreatedBy().getUsername() : null);
         dto.setParentCategoryIds(
                 category.getParentCategories() != null
                         ? category.getParentCategories().stream().map(Category::getId).collect(Collectors.toSet())

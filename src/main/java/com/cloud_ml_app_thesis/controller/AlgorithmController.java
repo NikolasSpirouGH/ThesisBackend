@@ -107,7 +107,7 @@ public class AlgorithmController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<Void> deleteAlgorithm(@AuthenticationPrincipal UserDetails userDetails, @PathVariable @Positive Integer id) {
         boolean deleted = algorithmService.deleteAlgorithm(id);
         if(!deleted){
@@ -118,13 +118,13 @@ public class AlgorithmController {
 
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<Algorithm> createAlgorithm(@AuthenticationPrincipal UserDetails userDetails, @Valid @RequestBody AlgorithmCreateRequest request) {
         return ResponseEntity.ok(algorithmService.createAlgorithm(request));
     }
 
     @PatchMapping("/weka/update/{id}")
-    @PreAuthorize("hasAnyRole('ALGORITHM_MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ALGORITHM_MANAGER', 'ADMIN')")
     public ResponseEntity<Algorithm> updateAlgorithm(@AuthenticationPrincipal UserDetails userDetails, @PathVariable @Positive Integer id, @Valid  @RequestBody AlgorithmUpdateRequest request) {
         List<String> userRoles = userDetails.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
@@ -150,7 +150,7 @@ public class AlgorithmController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("hasAuthority('USER')")
     public ResponseEntity<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> getCustomAlgorithmById(
             @PathVariable @Positive Integer id,
             @AuthenticationPrincipal AccountDetails accountDetails) {
@@ -208,7 +208,7 @@ public class AlgorithmController {
             @ApiResponse(responseCode = "403", description = "Access denied - not the owner")
     })
     @DeleteMapping("/custom/delete/{id}")
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("hasAuthority('USER')")
     public ResponseEntity<Void> deleteCustomAlgorithm(
             @PathVariable @Positive Integer id,
             @AuthenticationPrincipal AccountDetails accountDetails) {

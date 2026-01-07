@@ -146,4 +146,3 @@ public class TaskStatusService {
         log.info("🛑 Task {} marked as STOPPED with executionId={}", taskId, executionId);
     }
 }
-

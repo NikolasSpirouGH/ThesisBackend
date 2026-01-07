@@ -4,6 +4,8 @@ import com.cloud_ml_app_thesis.entity.accessibility.CustomAlgorithmAccessibility
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -43,6 +45,7 @@ public class CustomAlgorithm {
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private User owner;
 
     @OneToMany(mappedBy = "customAlgorithm", cascade = CascadeType.ALL, orphanRemoval = true)

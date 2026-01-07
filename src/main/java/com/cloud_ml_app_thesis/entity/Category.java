@@ -28,8 +28,8 @@ public class Category {
     @Column(length = 2000)
     private String description;
 
-    @ManyToOne
-    @JoinColumn(name = "created_by", nullable = false)
+    @ManyToOne(optional = true)
+    @JoinColumn(name = "created_by", nullable = true)
     private User createdBy;
 
     // Self-referencing Many-to-Many for hierarchical categories

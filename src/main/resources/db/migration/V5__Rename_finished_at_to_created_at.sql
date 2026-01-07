@@ -1,3 +1,0 @@
--- This migration is no longer needed as V0 already created the models table with created_at column
--- Keeping this file to maintain Flyway version sequence
--- DO NOTHING (no-op migration)

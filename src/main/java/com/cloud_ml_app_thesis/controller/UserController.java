@@ -42,7 +42,7 @@ public class UserController {
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
     @GetMapping("/me")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<?>> getCurrentUser(@AuthenticationPrincipal AccountDetails userDetails) {
         return ResponseEntity.ok(userService.getUserProfile(userDetails.getUser()));
     }
@@ -60,7 +60,7 @@ public class UserController {
                 accountDetails.getAuthorities());
 
         boolean isAdmin = accountDetails.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("ADMIN") || auth.getAuthority().equals("ROLE_ADMIN"));
+                .anyMatch(auth -> auth.getAuthority().equals("ADMIN"));
 
         if (!isAdmin) {
             log.warn("⛔ Access denied: User {} is not admin", accountDetails.getUsername());
@@ -77,7 +77,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Forbidden - Admin only")
     })
     @GetMapping("/details/{username}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<GenericResponse<?>> getUserDetails(@PathVariable String username) {
         return ResponseEntity.ok(userService.getUserDetails(username));
     }
@@ -89,7 +89,7 @@ public class UserController {
             @ApiResponse(responseCode = "400", description = "Validation error")
     })
     @PutMapping("/update")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<?>> updateUser(@AuthenticationPrincipal AccountDetails userDetails, @Valid @RequestBody UserUpdateRequest request) {
         return ResponseEntity.ok(userService.updateUser(userDetails.getUser(), request));
     }
@@ -101,7 +101,7 @@ public class UserController {
             @ApiResponse(responseCode = "400", description = "Validation error")
     })
     @PutMapping("/updateByAdmin/{username}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<GenericResponse<?>> updateUserByAdmin(@PathVariable String username, @Valid @RequestBody UserUpdateRequest request) {
         return ResponseEntity.ok(userService.updateUserByAdmin(username, request));
     }
@@ -112,7 +112,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Unauthorized")
     })
     @PatchMapping("/delete")
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<?>> deleteOwnAccount(
             @AuthenticationPrincipal AccountDetails userDetails,
             @Valid @RequestBody DeleteUserRequest request) {
@@ -127,7 +127,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Unauthorized")
     })
     @PatchMapping("/delete/{username}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<GenericResponse<?>> deleteUserByAdmin(
             @PathVariable String username,
             @Valid @RequestBody DeleteUserRequest request) {

@@ -52,8 +52,8 @@ public class SecurityUtils {
         Set<String> expectedRoles = Set.of(roles);
 
         return user.getRoles().stream()
-                .map(Role::getName) // assuming getName() returns "ROLE_ADMIN"
-                .anyMatch(expectedRoles::contains );
+                .map(role -> role.getName().name())
+                .anyMatch(expectedRoles::contains);
     }
     /**
      * Check if the user has any of the given roles.
@@ -88,7 +88,7 @@ public class SecurityUtils {
     }
 
     public static String authority(UserRoleEnum role) {
-        return "ROLE_" + role.name();
+        return role.name();
     }
 
 }

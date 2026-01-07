@@ -93,7 +93,7 @@ public class AuthController {
             @ApiResponse(responseCode = "403", description = "Forbidden")
     })
     @PatchMapping("/change-password")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PreAuthorize("hasAnyAuthority('USER', 'ADMIN')")
     public ResponseEntity<GenericResponse<?>> changePassword(
             @AuthenticationPrincipal AccountDetails userDetails,
             @Valid @RequestBody PasswordChangeRequest request

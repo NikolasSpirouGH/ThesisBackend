@@ -88,7 +88,7 @@ public class DatasetController {
                     .toList();
 
             // Admins and dataset managers can see all datasets
-            if(roles.contains(UserRoleEnum.DATASET_MANAGER.toString()) || roles.contains(UserRoleEnum.ADMIN.toString())){
+            if (roles.contains(UserRoleEnum.DATASET_MANAGER.toString()) || roles.contains(UserRoleEnum.ADMIN.toString())) {
                 username = null; // null = return all datasets for admins
             }
         }
@@ -107,7 +107,7 @@ public class DatasetController {
                     .map(GrantedAuthority::getAuthority)
                     .toList();
 
-            if(roles.contains(UserRoleEnum.DATASET_MANAGER.toString()) || roles.contains(UserRoleEnum.ADMIN.toString())){
+            if (roles.contains(UserRoleEnum.DATASET_MANAGER.toString()) || roles.contains(UserRoleEnum.ADMIN.toString())) {
 
             }
         }
