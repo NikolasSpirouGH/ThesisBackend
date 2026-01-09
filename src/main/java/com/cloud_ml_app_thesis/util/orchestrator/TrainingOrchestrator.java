@@ -43,16 +43,12 @@ import java.util.UUID;
 @Slf4j
 public class TrainingOrchestrator {
 
-    private final TaskStatusRepository taskStatusRepository;
-    private final UserRepository userRepository;
     private final DatasetService datasetService;
     private final DatasetConfigurationRepository datasetConfigurationRepository;
     private final BucketResolver bucketResolver;
     private final CustomAlgorithmRepository customAlgorithmRepository;
-    private final AlgorithmRepository algorithmRepository;
     private final AsyncManager asyncManager;
     private final MinioService minioService;
-    private final AlgorithmConfigurationRepository algorithmConfigurationRepository;
     private final TrainingHelper trainingHelper;
     private final TaskStatusService taskStatusService;
 

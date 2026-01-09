@@ -46,6 +46,12 @@ public class VisualizationService {
     private final DatasetService datasetService;
     private final DatasetConfigurationRepository datasetConfigurationRepository;
 
+    private void validateNotCustomAlgorithm(Model model) {
+        if (model.getTraining().getCustomAlgorithmConfiguration() != null) {
+            throw new BadRequestException("Results viewing is only available for predefined Weka algorithms. Custom algorithms do not support result visualizations.");
+        }
+    }
+
     //classification
     public ByteArrayResource generateBarChartFromMetricsJson(Integer modelId, User user) {
         Model model = modelRepository.findById(modelId)
@@ -54,6 +60,8 @@ public class VisualizationService {
         if(!user.getUsername().equals(model.getTraining().getUser().getUsername()) && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to train this algorithm");
         }
+
+        validateNotCustomAlgorithm(model);
 
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
@@ -113,6 +121,8 @@ public class VisualizationService {
                 && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to access this model");
         }
+
+        validateNotCustomAlgorithm(model);
 
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
@@ -196,6 +206,8 @@ public class VisualizationService {
             throw new AuthorizationDeniedException("User not authorized to access this model");
         }
 
+        validateNotCustomAlgorithm(model);
+
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
             throw new IllegalArgumentException("Model does not contain metrics URL");
@@ -269,6 +281,8 @@ public class VisualizationService {
                 && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to access this model");
         }
+
+        validateNotCustomAlgorithm(model);
 
         String metricsUrl = model.getMetricsUrl();
         if (metricsUrl == null || metricsUrl.isBlank()) {
@@ -351,6 +365,8 @@ public class VisualizationService {
             throw new AuthorizationDeniedException("User not authorized to access this model");
         }
 
+        validateNotCustomAlgorithm(model);
+
         //            if (!AlgorithmUtil.isClustering(data)) {
 //                throw new BadRequestException("The model with ID " + modelId + " is not a clustering model.");
 //            }
@@ -415,6 +431,8 @@ public class VisualizationService {
                 && model.getAccessibility().getName().equals(ModelAccessibilityEnum.PRIVATE)) {
             throw new AuthorizationDeniedException("User not authorized to access this model");
         }
+
+        validateNotCustomAlgorithm(model);
 
         String metricsUrl = model.getMetricsUrl();
 

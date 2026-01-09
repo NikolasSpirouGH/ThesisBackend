@@ -22,7 +22,7 @@ public class Algorithm {
     @Column(length = 5000)
     private String description;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "type_id", nullable = false)
     private AlgorithmType type;
 

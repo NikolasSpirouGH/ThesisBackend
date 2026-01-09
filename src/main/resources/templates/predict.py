@@ -38,6 +38,14 @@ def main():
                 label_mapping = json.load(f)
             print(f"Label mapping loaded: {label_mapping}")
 
+        # Load feature columns (for applying same encoding as training)
+        feature_columns = None
+        feature_columns_path = os.path.join(model_dir, 'feature_columns.json')
+        if os.path.exists(feature_columns_path):
+            with open(feature_columns_path, 'r') as f:
+                feature_columns = json.load(f)
+            print(f"Feature columns loaded: {len(feature_columns)} columns")
+
         # Load test dataset
         test_data_path = os.path.join(data_dir, 'test_data.csv')
         if not os.path.exists(test_data_path):
@@ -49,11 +57,37 @@ def main():
         # If last column contains '?' or similar placeholders, assume it's a target column and drop it
         if df.iloc[:, -1].astype(str).str.contains(r'^\?$', na=False).all():
             print(f"Detected placeholder target column (last column), dropping it for prediction")
-            X_test_df = df.iloc[:, :-1]  # Keep as DataFrame for headers
-            X_test = X_test_df.values
+            X_test_raw = df.iloc[:, :-1]
         else:
-            X_test_df = df  # Keep as DataFrame for headers
-            X_test = df.values
+            X_test_raw = df
+
+        # Apply same categorical encoding as training
+        if feature_columns is not None:
+            # Detect categorical columns
+            categorical_cols = X_test_raw.select_dtypes(include=['object', 'category']).columns.tolist()
+
+            if categorical_cols:
+                print(f"Encoding categorical features: {categorical_cols}")
+                # One-hot encode with same columns as training
+                X_test_encoded = pd.get_dummies(X_test_raw, columns=categorical_cols, prefix_sep='_')
+
+                # Ensure same columns as training (add missing, remove extra)
+                for col in feature_columns:
+                    if col not in X_test_encoded.columns:
+                        X_test_encoded[col] = 0  # Add missing column with zeros
+
+                # Reorder columns to match training
+                X_test_encoded = X_test_encoded[feature_columns]
+                X_test_df = X_test_encoded
+                X_test = X_test_encoded.values
+                print(f"Features encoded. Shape: {X_test.shape}")
+            else:
+                X_test_df = X_test_raw
+                X_test = X_test_raw.values
+        else:
+            X_test_df = X_test_raw
+            X_test = X_test_raw.values
+
         print(f"Test data loaded: {X_test.shape[0]} samples, {X_test.shape[1]} features")
 
         # Make predictions
@@ -78,9 +112,9 @@ def main():
         # Ensure output directory exists
         os.makedirs(model_dir, exist_ok=True)
 
-        # Save predictions to CSV with all input features in model directory (where service expects output)
-        # Create output DataFrame with original features + predictions
-        output_df = X_test_df.copy()
+        # Save predictions to CSV with ORIGINAL input features in model directory (where service expects output)
+        # Use the original raw features (before encoding), not the one-hot encoded ones
+        output_df = X_test_raw.copy()
         output_df['prediction'] = predictions
 
         output_path = os.path.join(model_dir, 'predictions.csv')

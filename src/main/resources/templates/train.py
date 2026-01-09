@@ -34,8 +34,24 @@ def main():
 
         # Split features and target
         # Assume last column is target, rest are features
-        X = df.iloc[:, :-1].values
+        X_raw = df.iloc[:, :-1]
         y_raw = df.iloc[:, -1]
+
+        # Convert nominal/categorical FEATURES to numeric using one-hot encoding
+        feature_columns = []
+        categorical_cols = X_raw.select_dtypes(include=['object', 'category']).columns.tolist()
+
+        if categorical_cols:
+            print(f"Detected categorical features: {categorical_cols}")
+            # One-hot encode categorical features
+            X_encoded = pd.get_dummies(X_raw, columns=categorical_cols, prefix_sep='_')
+            feature_columns = X_encoded.columns.tolist()
+            X = X_encoded.values
+            print(f"Converted categorical features. New feature count: {len(feature_columns)}")
+        else:
+            feature_columns = X_raw.columns.tolist()
+            X = X_raw.values
+            print("All features are numeric, no conversion needed")
 
         # Convert target to numeric if it's categorical (strings)
         label_mapping = None
@@ -76,6 +92,13 @@ def main():
             with open(label_mapping_path, 'w') as f:
                 json.dump(label_mapping, f, indent=2)
             print(f"Label mapping saved to {label_mapping_path}: {label_mapping}")
+
+        # Save feature columns (for applying same encoding during prediction)
+        if feature_columns:
+            feature_columns_path = os.path.join(model_dir, 'feature_columns.json')
+            with open(feature_columns_path, 'w') as f:
+                json.dump(feature_columns, f, indent=2)
+            print(f"Feature columns saved to {feature_columns_path}: {len(feature_columns)} columns")
 
         # Save training metadata
         metadata = {

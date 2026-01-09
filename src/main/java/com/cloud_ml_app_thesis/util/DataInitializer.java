@@ -135,7 +135,12 @@ public class DataInitializer implements CommandLineRunner {
                     if (Clusterer.class.isAssignableFrom(cls)) {
                         typeEnum = AlgorithmTypeEnum.CLUSTERING;
                     } else if (Classifier.class.isAssignableFrom(cls)) {
-                        typeEnum = AlgorithmTypeEnum.CLASSIFICATION;
+                        // Check if this classifier is actually a regressor (handles numeric target)
+                        if (isRegressor((Classifier) instance)) {
+                            typeEnum = AlgorithmTypeEnum.REGRESSION;
+                        } else {
+                            typeEnum = AlgorithmTypeEnum.CLASSIFICATION;
+                        }
                     } else {
                         throw new IllegalArgumentException("❌ Unknown algorithm type: " + cls.getName());
                     }

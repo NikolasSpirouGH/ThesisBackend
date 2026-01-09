@@ -406,6 +406,8 @@ CREATE TABLE IF NOT EXISTS models (
     finalization_date TIMESTAMP WITH TIME ZONE,
     category_id INTEGER NOT NULL,
     metrics_url VARCHAR(255),
+    label_mapping_url VARCHAR(1000),
+    feature_columns_url VARCHAR(1000),
     CONSTRAINT fk_models_training FOREIGN KEY (training_id) REFERENCES trainings(id) ON DELETE CASCADE,
     CONSTRAINT fk_models_type FOREIGN KEY (model_type_id) REFERENCES CONST_MODEL_TYPES(id),
     CONSTRAINT fk_models_status FOREIGN KEY (status_id) REFERENCES CONST_MODEL_STATUSES(id),

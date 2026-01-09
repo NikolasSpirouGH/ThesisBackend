@@ -328,6 +328,41 @@ public class DatasetService {
             } else {
                 log.warn("⚠️ Class attribute '{}' not found or no missing values.", classAttrName);
             }
+        } else if (algoType.getName() == AlgorithmTypeEnum.REGRESSION) {
+            // For REGRESSION: Add a dummy numeric target column if it doesn't exist
+            log.info("📈 REGRESSION detected. Checking if target column exists in prediction data...");
+
+            // Get target column name from TRAINING dataset (not prediction data)
+            String[] pathParts = DatasetUtil.resolveDatasetMinioInfo(config.getDataset());
+            String bucket = pathParts[0];
+            String objectName = pathParts[1];
+
+            String classAttrName;
+            try (InputStream trainingStream = minioService.loadObjectAsInputStream(bucket, objectName)) {
+                Instances trainingData = DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(config, trainingStream, objectName);
+                classAttrName = trainingData.classAttribute().name();
+                log.info("📋 Target column from training data: '{}'", classAttrName);
+            }
+
+            Attribute classAttr = data.attribute(classAttrName);
+
+            if (classAttr == null) {
+                // Target column missing - need to add it as a dummy numeric attribute
+                log.info("⚠️ Target column '{}' not found in prediction data. Adding dummy numeric column...", classAttrName);
+
+                // Add a new numeric attribute with missing values
+                data.insertAttributeAt(new Attribute(classAttrName), data.numAttributes());
+
+                // Set all values to missing (?)
+                int targetIndex = data.numAttributes() - 1;
+                for (int i = 0; i < data.numInstances(); i++) {
+                    data.instance(i).setMissing(targetIndex);
+                }
+
+                log.info("✅ Added dummy numeric target column '{}' at index {}", classAttrName, targetIndex);
+            } else {
+                log.info("✅ Target column '{}' already exists in prediction data", classAttrName);
+            }
         }
 
         // 3. Επιλογή βασικών στηλών (feature columns)

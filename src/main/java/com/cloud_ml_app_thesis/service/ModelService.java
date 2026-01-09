@@ -169,6 +169,11 @@ public class ModelService {
     }
 
     public void saveModel(Training training, String modelUrl, String metricsUrl, ModelType modelType) {
+        saveModel(training, modelUrl, metricsUrl, null, null, modelType);
+    }
+
+    public void saveModel(Training training, String modelUrl, String metricsUrl,
+                          String labelMappingUrl, String featureColumnsUrl, ModelType modelType) {
         ModelAccessibility accessibility = modelAccessibilityRepository
                 .findByName(ModelAccessibilityEnum.PRIVATE)
                 .orElseThrow(() -> new EntityNotFoundException("Could not find accessibility"));
@@ -181,6 +186,8 @@ public class ModelService {
         model.setTraining(training);
         model.setModelUrl(modelUrl);
         model.setMetricsUrl(metricsUrl);
+        model.setLabelMappingUrl(labelMappingUrl);
+        model.setFeatureColumnsUrl(featureColumnsUrl);
         model.setStatus(modelStatusRepository.findByName(ModelStatusEnum.FINISHED)
                 .orElseThrow(() -> new EntityNotFoundException("Could not find IN_PROGRESS model status")));
         model.setModelType(modelType);

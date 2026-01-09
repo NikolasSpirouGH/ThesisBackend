@@ -57,12 +57,15 @@ public class SecurityConfig {
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(List.of(
-                "http://localhost:5173",   // React frontend
-                "http://localhost:5174",   // React frontend (alternate port)
-                "http://localhost:8080",   // Redoc loaded from Spring static folder
-                "null"                     // Redoc loaded from file://
-        ));
+
+        // Get CORS origins from environment variable, default to localhost
+        String corsOrigins = System.getenv().getOrDefault("CORS_ALLOWED_ORIGINS",
+                "http://localhost:5173,http://localhost:5174,http://localhost:8080");
+
+        List<String> allowedOrigins = new java.util.ArrayList<>(List.of(corsOrigins.split(",")));
+        allowedOrigins.add("null");  // Redoc loaded from file://
+
+        config.setAllowedOrigins(allowedOrigins);
         config.setAllowedHeaders(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 

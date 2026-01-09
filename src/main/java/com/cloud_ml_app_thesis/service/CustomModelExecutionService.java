@@ -120,12 +120,43 @@ public class CustomModelExecutionService {
             Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
             log.info("📥 Prediction dataset copied to /data: {}", datasetInside);
 
-            // 4. Κατέβασμα μοντέλου και αντιγραφή σε /model
+            // 4. Download model and artifacts from MinIO
+            // Models are stored in folder structure: username_timestamp/filename
+            // extractMinioKey() gets the full path including folder (e.g., "bigspy_08012026202238/trained_model.pkl")
             String modelKey = minioService.extractMinioKey(model.getModelUrl());
             Path modelPath = minioService.downloadObjectToTempFile(modelBucket, modelKey);
             Path modelInside = outputDir.resolve("trained_model.pkl");
             Files.copy(modelPath, modelInside, StandardCopyOption.REPLACE_EXISTING);
-            log.info("📥 Trained model copied to /model: {}", modelInside);
+            log.info("📥 Trained model copied from {}/{} to {}", modelBucket, modelKey, modelInside);
+
+            // Download optional JSON artifacts (label_mapping.json, feature_columns.json) from same folder
+            if (model.getLabelMappingUrl() != null && !model.getLabelMappingUrl().isBlank()) {
+                try {
+                    String labelMappingKey = minioService.extractMinioKey(model.getLabelMappingUrl());
+                    Path labelMappingPath = minioService.downloadObjectToTempFile(modelBucket, labelMappingKey);
+                    Path labelMappingInside = outputDir.resolve("label_mapping.json");
+                    Files.copy(labelMappingPath, labelMappingInside, StandardCopyOption.REPLACE_EXISTING);
+                    log.info("📥 Label mapping copied from {}/{} to {}", modelBucket, labelMappingKey, labelMappingInside);
+                } catch (Exception e) {
+                    log.warn("⚠️ Could not download label_mapping.json: {}", e.getMessage());
+                }
+            } else {
+                log.info("ℹ️ No label mapping file for this model (purely numeric target)");
+            }
+
+            if (model.getFeatureColumnsUrl() != null && !model.getFeatureColumnsUrl().isBlank()) {
+                try {
+                    String featureColumnsKey = minioService.extractMinioKey(model.getFeatureColumnsUrl());
+                    Path featureColumnsPath = minioService.downloadObjectToTempFile(modelBucket, featureColumnsKey);
+                    Path featureColumnsInside = outputDir.resolve("feature_columns.json");
+                    Files.copy(featureColumnsPath, featureColumnsInside, StandardCopyOption.REPLACE_EXISTING);
+                    log.info("📥 Feature columns copied from {}/{} to {}", modelBucket, featureColumnsKey, featureColumnsInside);
+                } catch (Exception e) {
+                    log.warn("⚠️ Could not download feature_columns.json: {}", e.getMessage());
+                }
+            } else {
+                log.info("ℹ️ No feature columns file for this model (purely numeric features)");
+            }
 
             // Copy standardized predict.py template to data directory
             try (InputStream predictTemplate = getClass().getResourceAsStream("/templates/predict.py")) {

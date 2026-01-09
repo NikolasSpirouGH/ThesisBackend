@@ -49,16 +49,19 @@ public class BasicFullCustomFlowIT {
 
     @Order(1)
     void shouldCreateCustomAlgorithm() throws IOException {
-        File parametersFile = new ClassPathResource("custom_test/customer_purchase_predictor/parameters.json").getFile();
-        File dockerTarFile = new ClassPathResource("custom_test/customer_purchase_predictor/customer_purchase_predictor.tar").getFile();
+        File parametersFile = new ClassPathResource("custom_test/animal_classifier/parameters.json").getFile();
+        File dockerTarFile = new ClassPathResource("custom_test/animal_classifier/animal_classifier.tar").getFile();
 
         Response response = given()
                 .auth().oauth2(jwtToken)
-                .multiPart("name", "customer_purchase_predictor")
-                .multiPart("description", "Predicts customer purchase based on age, income, and visits")
+                .multiPart("name", "animal_classifier")
+                .multiPart("description", "Classifies animal features")
                 .multiPart("version", "1.0.0")
                 .multiPart("accessibility", "PUBLIC")
-                .multiPart("keywords", "ml", "classification", "customer")
+                .multiPart("keywords", "ml")
+                .multiPart("keywords", "classification")
+                .multiPart("keywords", "multi")
+                .multiPart("keywords", "animals")
                 .multiPart("parametersFile", parametersFile)
                 .multiPart("dockerTarFile",dockerTarFile)
                 //.multiPart("dockerHubUrl", "paradoxsenpai/logreg:1.0.0")
@@ -84,7 +87,7 @@ public class BasicFullCustomFlowIT {
     void shouldTrainCustomModel() throws IOException {
         Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
 
-        File datasetFile = new ClassPathResource("custom_test/customer_purchase_predictor/training_data.csv").getFile();
+        File datasetFile = new ClassPathResource("custom_test/animal_classifier/training_data.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
@@ -162,7 +165,7 @@ public class BasicFullCustomFlowIT {
     void shouldPredictCustomModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
 
-        File predictionFile = new ClassPathResource("custom_test/customer_purchase_predictor/prediction_data.csv").getFile();
+        File predictionFile = new ClassPathResource("custom_test/animal_classifier/prediction_data.csv").getFile();
 
         Response predictionResponse = given()
                 .header("Authorization", "Bearer " + jwtToken)

@@ -103,11 +103,6 @@ public class CustomTrainingService {
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Async task tracking not found"));
 
-        // Let TaskStatusService handle the status update to avoid optimistic locking conflicts
-        // task.setStatus(TaskStatusEnum.RUNNING);
-        // taskStatusRepository.save(task);
-        // entityManager.detach(task);
-
         Path dataDir = null;
         Path outputDir = null;
 
@@ -223,6 +218,9 @@ public class CustomTrainingService {
 
             CustomAlgorithmConfiguration algoConfig = new CustomAlgorithmConfiguration();
             algoConfig.setAlgorithm(algorithm);
+            User userRef = new User();
+            userRef.setId(userId);
+            algoConfig.setUser(userRef);
             CustomAlgorithmConfiguration savedConfig = customAlgorithmConfigurationRepository.save(algoConfig);
 
             log.info("🧩 Final training parameters (merged):");
@@ -355,13 +353,32 @@ public class CustomTrainingService {
                     .findFirst()
                     .orElseThrow(() -> new FileProcessingException("No metrics file generated", null));
 
-            log.info("✅ model: {}, metrics: {}", modelFile.getName(), metricsFile.getName());
+            // Find optional JSON artifact files (label_mapping.json, feature_columns.json)
+            File labelMappingFile = Files.walk(outputDir)
+                    .filter(p -> p.getFileName().toString().equals("label_mapping.json"))
+                    .map(Path::toFile)
+                    .findFirst()
+                    .orElse(null);
+
+            File featureColumnsFile = Files.walk(outputDir)
+                    .filter(p -> p.getFileName().toString().equals("feature_columns.json"))
+                    .map(Path::toFile)
+                    .findFirst()
+                    .orElse(null);
+
+            log.info("✅ model: {}, metrics: {}, label_mapping: {}, feature_columns: {}",
+                    modelFile.getName(), metricsFile.getName(),
+                    labelMappingFile != null ? labelMappingFile.getName() : "none",
+                    featureColumnsFile != null ? featureColumnsFile.getName() : "none");
 
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
 
-            // 8. Upload results to MinIO
-            String modelKey = username + "_" + timestamp + "_" + modelFile.getName();
-            String metricsKey = username + "_" + timestamp + "_" + metricsFile.getName();
+            // 8. Upload results to MinIO using folder structure
+            // Create a unique folder for this model: username_timestamp/
+            String modelFolder = username + "_" + timestamp + "/";
+
+            String modelKey = modelFolder + modelFile.getName();
+            String metricsKey = username + "_" + timestamp + "_" + metricsFile.getName();  // Metrics stays flat
             String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
             String metricsBucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
 
@@ -371,8 +388,30 @@ public class CustomTrainingService {
                 minioService.uploadToMinio(metricsIn, metricsBucket, metricsKey, metricsFile.length(), "application/json");
             }
 
-            log.info("Model uploaded to MinIO: {}", bucketResolver.resolve(BucketTypeEnum.MODEL));
+            log.info("Model uploaded to MinIO folder: {}/{}", modelBucket, modelFolder);
             log.info("Metrics uploaded to MinIO: {}", bucketResolver.resolve(BucketTypeEnum.METRICS));
+
+            // Upload optional JSON artifacts to the same model folder
+            String labelMappingUrl = null;
+            String featureColumnsUrl = null;
+
+            if (labelMappingFile != null) {
+                String labelMappingKey = modelFolder + labelMappingFile.getName();
+                try (InputStream labelMappingIn = new FileInputStream(labelMappingFile)) {
+                    minioService.uploadToMinio(labelMappingIn, modelBucket, labelMappingKey, labelMappingFile.length(), "application/json");
+                    labelMappingUrl = modelService.generateMinioUrl(modelBucket, labelMappingKey);
+                    log.info("Label mapping uploaded to: {}/{}", modelBucket, labelMappingKey);
+                }
+            }
+
+            if (featureColumnsFile != null) {
+                String featureColumnsKey = modelFolder + featureColumnsFile.getName();
+                try (InputStream featureColumnsIn = new FileInputStream(featureColumnsFile)) {
+                    minioService.uploadToMinio(featureColumnsIn, modelBucket, featureColumnsKey, featureColumnsFile.length(), "application/json");
+                    featureColumnsUrl = modelService.generateMinioUrl(modelBucket, featureColumnsKey);
+                    log.info("Feature columns uploaded to: {}/{}", modelBucket, featureColumnsKey);
+                }
+            }
 
             String modelUrl = modelService.generateMinioUrl(modelBucket, modelKey);
             String metricsUrl = modelService.generateMinioUrl(metricsBucket, metricsKey);
@@ -381,7 +420,7 @@ public class CustomTrainingService {
             ModelType customType = modelTypeRepository.findByName(ModelTypeEnum.CUSTOM)
                     .orElseThrow(() -> new IllegalStateException("AlgorithmType CUSTOM not found"));
 
-            modelService.saveModel(training, modelUrl, metricsUrl, customType);
+            modelService.saveModel(training, modelUrl, metricsUrl, labelMappingUrl, featureColumnsUrl, customType);
 
             log.info("⏳ Sleeping for 20 seconds after training (for manual stop testing)");
             complete=true;

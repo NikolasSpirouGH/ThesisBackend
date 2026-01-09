@@ -46,14 +46,14 @@ public class BasicFullWekaFlowIT {
     @Test
     @Order(1)
     void shouldTrainDataWithWekaAlgorithm() throws IOException {
-        File trainFile = new ClassPathResource("weka_test/Logistic_Regression/Logistic_Regression_-_Training__logreg_train_csv_.csv").getFile();
+        File trainFile = new ClassPathResource("weka_test/Linear_Regression/Linear_Regression_-_Training__linear_regression_train_csv_.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
                 .contentType(ContentType.MULTIPART)
                 //.multiPart("modelId", 150)
                 .multiPart("file", trainFile)
-                .multiPart("algorithmId", 21)
+                .multiPart("algorithmId", 10)
           //      .multiPart("basicCharacteristicsColumns", "1,2,3")
           //      .multiPart("targetClassColumn", "5")
                 .when()
@@ -90,8 +90,8 @@ public class BasicFullWekaFlowIT {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId is null");
         String finalizePayload = """
         {
-          "name": "My Finalized Model",
-          "keywords": ["custom", "finalized"],\
+          "name": "weka-test-j48",
+          "keywords": ["j48"],\
           "description": "This is a finalized version of the trained model.",
           "dataDescription": "Basic classification data",
           "categoryId": 1,
@@ -121,7 +121,7 @@ public class BasicFullWekaFlowIT {
     @Order(3)
     void shouldPredictModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
-        File predictionFile = new ClassPathResource("weka_test/Logistic_Regression/Logistic_Regression_-_Prediction__logreg_predict_csv_.csv").getFile();
+        File predictionFile = new ClassPathResource("weka_test/Linear_Regression/Linear_Regression_-_Prediction__linear_regression_predict_csv_.csv").getFile();
 
         Response predictionResponse = given()
                 .header("Authorization", "Bearer " + jwtToken)

@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.stream.Collectors;
 
+import com.cloud_ml_app_thesis.entity.*;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.TransactionDefinition;
@@ -35,14 +36,6 @@ import com.cloud_ml_app_thesis.dto.train.RetrainModelOptionDTO;
 import com.cloud_ml_app_thesis.dto.train.RetrainTrainingDetailsDTO;
 import com.cloud_ml_app_thesis.dto.train.RetrainTrainingOptionDTO;
 import com.cloud_ml_app_thesis.dto.train.TrainingDTO;
-import com.cloud_ml_app_thesis.entity.AlgorithmConfiguration;
-import com.cloud_ml_app_thesis.entity.AlgorithmType;
-import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
-import com.cloud_ml_app_thesis.entity.CustomAlgorithmConfiguration;
-import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
-import com.cloud_ml_app_thesis.entity.ModelType;
-import com.cloud_ml_app_thesis.entity.Training;
-import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.status.TrainingStatus;
@@ -119,7 +112,12 @@ public class TrainService {
             DatasetConfiguration datasetConfig = datasetConfigurationRepository.findById(metadata.datasetConfigurationId())
                     .orElseThrow(() -> new EntityNotFoundException("DatasetConfiguration not found"));
 
-            String algorithmClassName = config.getAlgorithm().getClassName();
+            // Eagerly fetch the algorithm's type to avoid lazy loading issues
+            // Access the type now while we might still have a session, before the async work starts
+            Algorithm algorithm = config.getAlgorithm();
+            AlgorithmTypeEnum algorithmTypeFromDb = algorithm.getType().getName();
+
+            String algorithmClassName = algorithm.getClassName();
             boolean isClassifier = AlgorithmUtil.isClassifier(algorithmClassName);
             boolean isClusterer = AlgorithmUtil.isClusterer(algorithmClassName);
 
@@ -144,9 +142,12 @@ public class TrainService {
             Instances trainData = new Instances(data, 0, trainSize);
             Instances testData = new Instances(data, trainSize, testSize);
 
-            // 🔄 Convert numeric class to nominal for classification algorithms
-            if (isClassifier && data.classIndex() >= 0 && data.classAttribute().isNumeric()) {
-                log.info("🔄 Converting numeric class to nominal for classification algorithm");
+            // 🔄 Convert numeric class to nominal ONLY for CLASSIFICATION algorithms (not REGRESSION)
+            // Check the algorithm's type from the database, not just whether it's a Classifier class
+            boolean isClassificationAlgorithm = algorithmTypeFromDb == AlgorithmTypeEnum.CLASSIFICATION;
+
+            if (isClassificationAlgorithm && data.classIndex() >= 0 && data.classAttribute().isNumeric()) {
+                log.info("🔄 Converting numeric class to nominal for CLASSIFICATION algorithm (type={})", algorithmTypeFromDb);
                 log.info("   Class attribute: {} (numeric)", data.classAttribute().name());
 
                 NumericToNominal convert = new NumericToNominal();
@@ -160,6 +161,9 @@ public class TrainService {
                 testData = Filter.useFilter(testData, convert);
 
                 log.info("✅ Converted class to nominal. Values: {}", data.classAttribute().toString());
+            } else if (algorithmTypeFromDb == AlgorithmTypeEnum.REGRESSION && data.classIndex() >= 0) {
+                log.info("📈 REGRESSION algorithm detected (type={}). Keeping numeric target: {}",
+                    algorithmTypeFromDb, data.classAttribute().name());
             }
 
             String fixedRawOptions = AlgorithmUtil.fixNestedOptions(config.getOptions());

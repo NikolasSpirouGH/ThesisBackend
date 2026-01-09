@@ -87,4 +87,10 @@ public class Model {
 
     @Column(name = "metrics_url")
     private String metricsUrl;
+
+    @Column(name = "label_mapping_url", length = 1000)
+    private String labelMappingUrl;
+
+    @Column(name = "feature_columns_url", length = 1000)
+    private String featureColumnsUrl;
 }
