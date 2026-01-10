@@ -223,7 +223,7 @@ public class BasicFullCustomFlowIT {
     }
 
     private void waitForTaskCompletion(String taskId) {
-        int maxTries = 15;
+        int maxTries = 60;  // Increased for custom Docker training (4 min timeout)
         int delayMillis = 4000;
 
         for (int i = 1; i <= maxTries; i++) {

@@ -342,10 +342,10 @@ public class CustomTrainingService {
             // 7. Read output files
             File modelFile = Files.walk(outputDir)
                     .filter(Files::isRegularFile)
-                    .filter(p -> !p.getFileName().toString().equals("metrics.json"))
+                    .filter(p -> p.getFileName().toString().endsWith(".pkl"))
                     .map(Path::toFile)
                     .findFirst()
-                    .orElseThrow(() -> new FileProcessingException("No model file generated", null));
+                    .orElseThrow(() -> new FileProcessingException("No model file (.pkl) generated", null));
 
             File metricsFile = Files.walk(outputDir)
                     .filter(p -> p.getFileName().toString().equals("metrics.json"))
