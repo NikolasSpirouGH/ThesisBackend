@@ -58,14 +58,24 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
 
-        // Get CORS origins from environment variable, default to localhost
-        String corsOrigins = System.getenv().getOrDefault("CORS_ALLOWED_ORIGINS",
-                "http://localhost:5173,http://localhost:5174,http://localhost:8080");
+        // Use patterns to support minikube service tunnels (random ports on 127.0.0.1)
+        // Also support environment-specified origins for specific deployments
+        String corsOrigins = System.getenv().getOrDefault("CORS_ALLOWED_ORIGINS", "");
 
-        List<String> allowedOrigins = new java.util.ArrayList<>(List.of(corsOrigins.split(",")));
-        allowedOrigins.add("null");  // Redoc loaded from file://
+        List<String> allowedOriginPatterns = new java.util.ArrayList<>();
 
-        config.setAllowedOrigins(allowedOrigins);
+        // Always allow localhost and 127.0.0.1 with any port (for minikube service tunnels)
+        allowedOriginPatterns.add("http://localhost:*");
+        allowedOriginPatterns.add("http://127.0.0.1:*");
+        allowedOriginPatterns.add("https://localhost:*");
+        allowedOriginPatterns.add("https://127.0.0.1:*");
+
+        // Add custom origins from environment (e.g., http://192.168.58.2:30173)
+        if (!corsOrigins.isEmpty()) {
+            allowedOriginPatterns.addAll(List.of(corsOrigins.split(",")));
+        }
+
+        config.setAllowedOriginPatterns(allowedOriginPatterns);
         config.setAllowedHeaders(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 
