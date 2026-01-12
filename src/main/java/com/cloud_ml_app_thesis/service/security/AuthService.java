@@ -203,6 +203,8 @@ public class AuthService {
             log.info("♻️ Existing password reset token found for user: {}. Invalidating and issuing a new one.",
                     user.getUsername());
 
+            // Clear bidirectional relationship before deleting
+            user.setPasswordResetToken(null);
             tokenRepository.delete(currentToken);
             tokenRepository.flush();
         }
@@ -212,6 +214,8 @@ public class AuthService {
 
         try {
             tokenRepository.save(myToken);
+            // Update bidirectional relationship
+            user.setPasswordResetToken(myToken);
         } catch (DataIntegrityViolationException ex) {
             log.warn("⚠️ Password reset token creation hit a constraint for user: {}", user.getUsername(), ex);
             throw new BadRequestException("A password reset request is already being processed. Please try again.");
@@ -291,8 +295,10 @@ public class AuthService {
     @Transactional
     public void resetPassword(User user, String newPassword) {
         user.setPassword(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
+        // Clear bidirectional relationship before deleting token
+        user.setPasswordResetToken(null);
         tokenRepository.deleteByUser(user);
+        userRepository.save(user);
         log.info("🔐 Password reset and token cleared for user: {}", user.getUsername());
     }
 }

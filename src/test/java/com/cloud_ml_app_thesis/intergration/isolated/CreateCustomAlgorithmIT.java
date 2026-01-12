@@ -53,8 +53,8 @@ public class CreateCustomAlgorithmIT {
     private UserRepository userRepository;
 
     private static final String TEST_USERNAME = "bigspy";
-    private static final String PARAMETERS_FILE_PATH = "/app/src/test/resources/logistic_regression/parameters.json";
-    private static final String DOCKER_TAR_FILE_PATH = "/app/src/test/resources/logistic_regression/logestic_regression.tar";
+    private static final String PARAMETERS_FILE_PATH = "/app/custom_test/animal_classifier/parameters.json";
+    private static final String DOCKER_TAR_FILE_PATH = "/app/custom_test/animal_classifier/animal_classifier.tar";
 
     @Test
     @Transactional
@@ -190,14 +190,14 @@ public class CreateCustomAlgorithmIT {
 
         // Create CustomAlgorithmCreateRequest with DockerHub URL
         CustomAlgorithmCreateRequest request = CustomAlgorithmCreateRequest.builder()
-                .name("Test DockerHub Algorithm")
+                .name("Animal Classifier (DockerHub)")
                 .description("Integration test for custom algorithm creation via DockerHub")
                 .accessibility(AlgorithmAccessibiltyEnum.PUBLIC)
-                .keywords(new ArrayList<>(List.of("test", "dockerhub")))
-                .version("1.0.0-dockerhub")
+                .keywords(new ArrayList<>(List.of("test", "dockerhub", "animal", "classifier")))
+                .version("1.0.0")
                 .parametersFile(parametersMultipartFile)
                 .dockerTarFile(null)
-                .dockerHubUrl("docker.io/library/test-algorithm:latest")
+                .dockerHubUrl("paradoxsenpai/animal_classifier:1.0.0")
                 .build();
 
         // Execute algorithm creation
@@ -214,7 +214,7 @@ public class CreateCustomAlgorithmIT {
                     .orElseThrow(() -> new RuntimeException("Algorithm not found in database: " + algorithmId));
 
             // Verify algorithm properties
-            assertEquals("Test DockerHub Algorithm", savedAlgorithm.getName());
+            assertEquals("Animal Classifier (DockerHub)", savedAlgorithm.getName());
             assertEquals("Integration test for custom algorithm creation via DockerHub", savedAlgorithm.getDescription());
 
             // Verify active image has DockerHub URL
@@ -223,9 +223,9 @@ public class CreateCustomAlgorithmIT {
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("No active image found"));
 
-            assertEquals("1.0.0-dockerhub", activeImage.getVersion());
+            assertEquals("1.0.0", activeImage.getVersion());
             assertNotNull(activeImage.getDockerHubUrl(), "DockerHub URL should not be null");
-            assertEquals("docker.io/library/test-algorithm:latest", activeImage.getDockerHubUrl());
+            assertEquals("paradoxsenpai/animal_classifier:1.0.0", activeImage.getDockerHubUrl());
 
             System.out.println("Active image version: " + activeImage.getVersion());
             System.out.println("DockerHub URL: " + activeImage.getDockerHubUrl());

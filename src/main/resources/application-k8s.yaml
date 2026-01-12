@@ -43,6 +43,10 @@ minio:
     metrics: ${MINIO_BUCKET_METRICS}
     parameters: ${MINIO_BUCKET_PARAMETERS}
 
+app:
+  frontend:
+    reset-password-url: ${APP_FRONTEND_RESET_PASSWORD_URL:http://thesisapp.local/#/reset-password}
+
 logging:
   level:
     root: INFO

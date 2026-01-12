@@ -3,7 +3,7 @@ server:
 
 app:
   frontend:
-    reset-password-url: http://localhost:5173/#/reset-password
+    reset-password-url: http://localhost:5174/#/reset-password
 
 spring:
   config:
