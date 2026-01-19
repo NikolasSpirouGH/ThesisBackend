@@ -88,10 +88,19 @@ public class AlgorithmUtil {
     }
 
     public static String fixNestedOptions(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return raw;
+        }
+
         if (raw.contains("-A weka.core.EuclideanDistance") && raw.contains("-R first-last")) {
             // Fix -R by wrapping as part of -A
             raw = raw.replace("-A weka.core.EuclideanDistance -R first-last", "-A \"weka.core.EuclideanDistance -R first-last\"");
         }
+
+        // Fix incomplete scientific notation (e.g., "1.0E" -> "1.0")
+        // Pattern matches: number followed by E/e without exponent
+        raw = raw.replaceAll("(\\d+\\.\\d+)[Ee](?![+-]?\\d)", "$1");
+
         return raw;
     }
 

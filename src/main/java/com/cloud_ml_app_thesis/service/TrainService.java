@@ -194,8 +194,12 @@ public class TrainService {
 
             } else if (isClassifier && AlgorithmUtil.isRegression(data)) {
                 log.info("📈 Regression detected");
+                log.info("🔧 Algorithm class: {}", algorithmClassName);
+                log.info("🔧 Raw options: {}", config.getOptions());
+                log.info("🔧 Fixed options: {}", fixedRawOptions);
                 Classifier cls = AlgorithmUtil.getClassifierInstance(algorithmClassName);
                 String[] optionsArray = Utils.splitOptions(fixedRawOptions);                //TODO exception ??
+                log.info("🔧 Parsed options array: {}", Arrays.toString(optionsArray));
                 AlgorithmUtil.setClassifierOptions(cls, optionsArray);
                 if (taskStatusService.stopRequested(taskId)) {
                     throw new UserInitiatedStopException("User requested stop before regression training for task " + taskId);
