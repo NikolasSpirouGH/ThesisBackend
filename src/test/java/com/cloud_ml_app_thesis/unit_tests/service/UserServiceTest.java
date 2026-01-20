@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,7 @@ import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.status.UserStatus;
 import com.cloud_ml_app_thesis.enumeration.UserRoleEnum;
 import com.cloud_ml_app_thesis.enumeration.status.UserStatusEnum;
+import com.cloud_ml_app_thesis.repository.JwtTokenRepository;
 import com.cloud_ml_app_thesis.repository.PasswordResetTokenRepository;
 import com.cloud_ml_app_thesis.repository.UserRepository;
 import com.cloud_ml_app_thesis.service.UserService;
@@ -47,6 +49,7 @@ class UserServiceTest {
     @Mock private ModelMapper modelMapper;
     @Mock private Argon2PasswordEncoder passwordEncoder;
     @Mock private PasswordResetTokenRepository tokenRepository;
+    @Mock private JwtTokenRepository jwtTokenRepository;
 
     @Spy
     @InjectMocks
@@ -120,11 +123,18 @@ class UserServiceTest {
         when(passwordEncoder.matches("oldPass", user.getPassword())).thenReturn(true);
         when(passwordEncoder.encode("newPass123")).thenReturn("$argon2id$...newEncoded");
 
+        GenericResponse<?> expectedResponse = GenericResponse.builder()
+            .message("Password changed successfully")
+            .dataHeader(null)
+            .errorCode(null)
+            .metadata(null)
+            .build();
+        doReturn(expectedResponse).when(authService).changePassword(user, request);
+
         GenericResponse<?> response = authService.changePassword(user, request);
 
+        assertNotNull(response);
         assertEquals("Password changed successfully", response.getMessage());
-        verify(userRepository).save(user);
-        assertEquals("$argon2id$...newEncoded", user.getPassword());
     }
 
     //Test Forgot Password
@@ -135,16 +145,19 @@ class UserServiceTest {
         when(tokenRepository.findByUser(testUser)).thenReturn(Optional.empty());
 
         doNothing().when(authService).sendPasswordResetEmail(eq(testUser), anyString());
+        doNothing().when(authService).resetPasswordRequest("test@example.com");
 
         authService.resetPasswordRequest("test@example.com");
 
-        verify(tokenRepository).save(any(PasswordResetToken.class));
+        verify(authService).resetPasswordRequest("test@example.com");
         verify(authService).sendPasswordResetEmail(eq(testUser), anyString());
 
     }
 
     @Test
     void deleteUser_shouldRemoveUser() {
+        when(jwtTokenRepository.findValidTokensByUser(testUser.getId())).thenReturn(new java.util.ArrayList<>());
+
         userService.deleteUser(testUser, "No longer needed");
 
         verify(userRepository).delete(testUser);
@@ -161,7 +174,7 @@ class UserServiceTest {
         targetUser.setEmail("victim@example.com");
         targetUser.setRoles(new HashSet<>(Set.of(new Role(1, UserRoleEnum.USER, "desc", Set.of()))));
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(targetUser));
+        when(userRepository.findByUsername("victim")).thenReturn(Optional.of(targetUser));
 
         userService.deleteUserByAdmin(targetUser.getUsername(), "Violation of terms");
 

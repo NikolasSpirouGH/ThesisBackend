@@ -92,8 +92,8 @@ public class AuthServiceTest {
         when(userRepository.existsByUsername(any())).thenReturn(false);
         when(userRepository.existsByEmail(any())).thenReturn(false);
         when(roleRepository.findByName(UserRoleEnum.USER)).thenReturn(Optional.of(role));
-        when(userStatusRepository.findByName(UserStatusEnum.INACTIVE))
-                .thenReturn(Optional.of(new UserStatus(1, UserStatusEnum.INACTIVE, "student")));
+        when(userStatusRepository.findByName(UserStatusEnum.ACTIVE))
+                .thenReturn(Optional.of(new UserStatus(1, UserStatusEnum.ACTIVE, "active user")));
         when(passwordEncoder.encode(any())).thenReturn("encryptedPass");
 
         User user = new User();
@@ -105,7 +105,7 @@ public class AuthServiceTest {
         user.setAge(30);
         user.setProfession("Engineer");
         user.setCountry("Greece");
-        user.setStatus(new UserStatus(1, UserStatusEnum.INACTIVE, "student"));
+        user.setStatus(new UserStatus(1, UserStatusEnum.ACTIVE, "active user"));
         user.setRoles(Set.of(role));
 
         when(userRepository.save(any(User.class))).thenReturn(user);
@@ -120,7 +120,7 @@ public class AuthServiceTest {
         dto.setAge(30);
         dto.setProfession("Engineer");
         dto.setCountry("Greece");
-        dto.setStatus("INACTIVE");
+        dto.setStatus("ACTIVE");
         dto.setRoles(Set.of("USER"));
 
         when(modelMapper.map(any(User.class), eq(UserDTO.class))).thenReturn(dto);

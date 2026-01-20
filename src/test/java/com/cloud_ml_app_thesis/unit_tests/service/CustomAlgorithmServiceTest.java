@@ -12,6 +12,7 @@ import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEn
 import com.cloud_ml_app_thesis.repository.AlgorithmImageRepository;
 import com.cloud_ml_app_thesis.repository.AlgorithmRepository;
 import com.cloud_ml_app_thesis.repository.CustomAlgorithmRepository;
+import com.cloud_ml_app_thesis.repository.accessibility.AlgorithmAccessibilityRepository;
 import com.cloud_ml_app_thesis.service.AlgorithmService;
 import com.cloud_ml_app_thesis.service.CustomAlgorithmService;
 import com.cloud_ml_app_thesis.service.MinioService;
@@ -51,6 +52,8 @@ public class CustomAlgorithmServiceTest {
     private MinioService minioService;
     @Mock
     private AlgorithmImageRepository imageRepository;
+    @Mock
+    private AlgorithmAccessibilityRepository algorithmAccessibilityRepository;
 
 
     private User testUser;

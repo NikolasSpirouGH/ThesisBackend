@@ -9,6 +9,8 @@ import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.entity.status.CategoryRequestStatus;
 import com.cloud_ml_app_thesis.enumeration.status.CategoryRequestStatusEnum;
 import com.cloud_ml_app_thesis.repository.*;
+import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
+import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.CategoryRequestStatusRepository;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.service.CategoryService;
@@ -36,6 +38,8 @@ class CategoryServiceTest {
     @Mock private CategoryRequestRepository categoryRequestRepository;
     @Mock private CategoryRequestStatusRepository categoryRequestStatusRepository;
     @Mock private CategoryHistoryRepository categoryHistoryRepository;
+    @Mock private ModelRepository modelRepository;
+    @Mock private DatasetRepository datasetRepository;
     @Mock ModelMapper modelMapper;
 
     @InjectMocks private CategoryService categoryService;

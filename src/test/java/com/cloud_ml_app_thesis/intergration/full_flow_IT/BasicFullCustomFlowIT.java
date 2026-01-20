@@ -46,7 +46,6 @@ public class BasicFullCustomFlowIT {
     }
 
     @Test
-
     @Order(1)
     void shouldCreateCustomAlgorithm() throws IOException {
         File parametersFile = new ClassPathResource("custom_test/animal_classifier/parameters.json").getFile();

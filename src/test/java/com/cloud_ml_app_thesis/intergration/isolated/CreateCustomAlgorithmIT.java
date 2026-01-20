@@ -95,10 +95,10 @@ public class CreateCustomAlgorithmIT {
 
         // Create CustomAlgorithmCreateRequest (same as production)
         CustomAlgorithmCreateRequest request = CustomAlgorithmCreateRequest.builder()
-                .name("log-reg")
-                .description("Integration test for custom algorithm creation")
+                .name("animal_classifier")
+                .description("Custom algorithm classifies animal species.")
                 .accessibility(AlgorithmAccessibiltyEnum.PRIVATE)
-                .keywords(new ArrayList<>(List.of("test", "logistic", "regression")))
+                .keywords(new ArrayList<>(List.of("test", "classifier", "custom")))
                 .version("1.0.0")
                 .parametersFile(parametersMultipartFile)
                 .dockerTarFile(dockerTarMultipartFile)
