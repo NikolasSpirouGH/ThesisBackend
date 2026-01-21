@@ -13,6 +13,7 @@ src/test/resources/
 .venv/
 venv/
 *:Zone.Identifier
+UPDATE.md
 
 # Environment files (keep sensitive data out of Git)
 .env
