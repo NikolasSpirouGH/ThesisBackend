@@ -192,6 +192,147 @@ public class DockerContainerRunner implements ContainerRunner {
         log.info("✅ Prediction container finished successfully");
     }
 
+    @Override
+    public void runWekaTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir) {
+        log.info("🐳 Starting WEKA training container using image='{}'", imageName);
+
+        Path expectedDataset = containerDataDir.resolve("dataset.csv");
+        if (!Files.exists(expectedDataset)) {
+            throw new IllegalStateException("❌ Missing dataset.csv at: " + expectedDataset);
+        }
+
+        Path expectedParams = containerDataDir.resolve("params.json");
+        if (!Files.exists(expectedParams)) {
+            throw new IllegalStateException("❌ Missing params.json at: " + expectedParams);
+        }
+
+        if (!Files.exists(containerModelDir)) {
+            throw new IllegalStateException("❌ Output directory (modelDir) does not exist: " + containerModelDir);
+        }
+
+        String sharedVolumeName = resolveSharedVolumeName();
+        Path sharedRoot = resolveSharedRoot();
+
+        Path relativeData = relativizeWithinShared(sharedRoot, containerDataDir);
+        Path relativeModel = relativizeWithinShared(sharedRoot, containerModelDir);
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        log.info("📂 Mounting shared volume '{}' at /shared", sharedVolumeName);
+        HostConfig hostConfig = HostConfig.newHostConfig()
+                .withBinds(new Bind(sharedVolumeName, new Volume("/shared")));
+
+        log.info("🔧 Creating Weka training container with host config...");
+
+        CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
+                .withHostConfig(hostConfig)
+                .withEnv(
+                        "DATA_DIR=" + dataPath,
+                        "MODEL_DIR=" + modelPath
+                )
+                .withCmd("train")  // WekaRunner command
+                .exec();
+
+        String containerId = container.getId();
+        log.info("✅ Weka Container created: ID={}", containerId);
+
+        dockerClient.startContainerCmd(containerId).exec();
+        log.info("🚀 Weka Container started: ID={}", containerId);
+
+        try {
+            log.info("📡 Attaching to Weka container logs...");
+            dockerClient.logContainerCmd(containerId)
+                    .withStdOut(true)
+                    .withStdErr(true)
+                    .withFollowStream(true)
+                    .exec(new LogContainerResultCallback() {
+                        @Override
+                        public void onNext(Frame frame) {
+                            String logLine = new String(frame.getPayload()).trim();
+                            if (!logLine.isBlank()) {
+                                log.info("[WEKA CONTAINER LOG] {}", logLine);
+                            }
+                            super.onNext(frame);
+                        }
+                    }).awaitCompletion(30, TimeUnit.MINUTES);  // Weka training may take longer
+        } catch (InterruptedException e) {
+            log.error("⛔ Interrupted while waiting for Weka container logs", e);
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while waiting for Weka container logs", e);
+        }
+
+        log.info("⌛ Waiting for Weka container to finish...");
+        Integer exitCode = dockerClient.waitContainerCmd(containerId).start().awaitStatusCode();
+
+        if (exitCode != 0) {
+            log.error("❌ Weka Container exited with non-zero code: {}", exitCode);
+            throw new RuntimeException("Weka training container failed (exitCode=" + exitCode + ")");
+        }
+
+        log.info("✅ Weka Container finished successfully (exitCode=0)");
+    }
+
+    @Override
+    public void runWekaPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir) {
+        log.info("🚀 Starting WEKA prediction container with image={}", imageName);
+
+        Path expectedTestData = containerDataDir.resolve("test_data.csv");
+        if (!Files.exists(expectedTestData)) {
+            throw new IllegalStateException("❌ Missing test_data.csv at: " + expectedTestData);
+        }
+
+        Path expectedModel = containerModelDir.resolve("model.ser");
+        if (!Files.exists(expectedModel)) {
+            throw new IllegalStateException("❌ Missing model.ser at: " + expectedModel);
+        }
+
+        String sharedVolumeName = resolveSharedVolumeName();
+        Path sharedRoot = resolveSharedRoot();
+
+        Path relativeData = relativizeWithinShared(sharedRoot, containerDataDir);
+        Path relativeModel = relativizeWithinShared(sharedRoot, containerModelDir);
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        HostConfig hostConfig = HostConfig.newHostConfig()
+                .withBinds(new Bind(sharedVolumeName, new Volume("/shared")));
+
+        CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
+                .withHostConfig(hostConfig)
+                .withEnv("DATA_DIR=" + dataPath, "MODEL_DIR=" + modelPath)
+                .withCmd("predict")  // WekaRunner command
+                .exec();
+
+        String containerId = container.getId();
+        dockerClient.startContainerCmd(containerId).exec();
+
+        log.info("🟢 Weka Prediction container started (id={})", containerId);
+
+        try {
+            dockerClient.logContainerCmd(containerId)
+                    .withStdOut(true).withStdErr(true).withFollowStream(true)
+                    .exec(new LogContainerResultCallback() {
+                        @Override
+                        public void onNext(Frame frame) {
+                            log.info("[WEKA CONTAINER LOG] {}", new String(frame.getPayload()).trim());
+                            super.onNext(frame);
+                        }
+                    }).awaitCompletion(10, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            throw new RuntimeException("Interrupted while waiting for Weka prediction logs", e);
+        }
+
+        int exitCode = dockerClient.waitContainerCmd(containerId).start().awaitStatusCode();
+        if (exitCode != 0) {
+            log.error("❌ Weka Prediction container exited with error code {}", exitCode);
+            throw new RuntimeException("Weka Prediction container failed (exitCode=" + exitCode + ")");
+        }
+
+        log.info("✅ Weka Prediction container finished successfully");
+    }
+
 
     @Override
     public void loadImageFromTar(Path tarPath, String expectedTag) {

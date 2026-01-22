@@ -61,7 +61,10 @@ public class PredictionOrchestrator {
 
         switch (model.getModelType().getName()) {
             case CUSTOM -> asyncManager.predictCustom(taskId, request.getModelId(), datasetKey, user);
-            case PREDEFINED -> asyncManager.predictPredefined(taskId, request.getModelId(), datasetKey, user);
+            case PREDEFINED -> {
+                // Use containerized Weka prediction (Kubernetes job)
+                asyncManager.predictWekaContainer(taskId, request.getModelId(), datasetKey, user);
+            }
             default -> throw new IllegalArgumentException("Unsupported algorithm type: " + model.getModelType().getName());
         }
 

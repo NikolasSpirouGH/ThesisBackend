@@ -196,6 +196,156 @@ public class KubernetesJobRunner implements ContainerRunner {
         waitForJobCompletion(jobName, Duration.ofMinutes(10));
     }
 
+    @Override
+    public void runWekaTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir) {
+        log.info("☸️ Starting Kubernetes WEKA training job with image={}", imageName);
+
+        Path expectedDataset = containerDataDir.resolve("dataset.csv");
+        if (!Files.exists(expectedDataset)) {
+            throw new IllegalStateException("❌ Missing dataset.csv at: " + expectedDataset);
+        }
+
+        Path expectedParams = containerDataDir.resolve("params.json");
+        if (!Files.exists(expectedParams)) {
+            throw new IllegalStateException("❌ Missing params.json at: " + expectedParams);
+        }
+
+        if (!Files.exists(containerModelDir)) {
+            throw new IllegalStateException("❌ Output directory (modelDir) does not exist: " + containerModelDir);
+        }
+
+        // Calculate relative paths within shared volume
+        Path relativeData = sharedRoot.relativize(containerDataDir.toAbsolutePath().normalize());
+        Path relativeModel = sharedRoot.relativize(containerModelDir.toAbsolutePath().normalize());
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        String jobName = "weka-training-" + System.currentTimeMillis();
+
+        Job job = new JobBuilder()
+                .withNewMetadata()
+                    .withName(jobName)
+                    .withNamespace(namespace)
+                    .withLabels(Collections.singletonMap("app", "weka-training"))
+                .endMetadata()
+                .withNewSpec()
+                    .withBackoffLimit(0)  // Don't retry on failure
+                    .withTtlSecondsAfterFinished(300)  // Auto-cleanup after 5 minutes
+                    .withNewTemplate()
+                        .withNewMetadata()
+                            .withLabels(Collections.singletonMap("job-name", jobName))
+                        .endMetadata()
+                        .withNewSpec()
+                            .addNewContainer()
+                                .withName("weka-trainer")
+                                .withImage(imageName)
+                                .withImagePullPolicy("IfNotPresent")
+                                .withArgs("train")  // Argument to WekaRunner main class
+                                .withEnv(
+                                    new EnvVar("DATA_DIR", dataPath, null),
+                                    new EnvVar("MODEL_DIR", modelPath, null)
+                                )
+                                .withVolumeMounts(new VolumeMountBuilder()
+                                        .withName("shared-storage")
+                                        .withMountPath("/shared")
+                                        .build())
+                                .withNewResources()
+                                    .withRequests(Collections.singletonMap("memory", new Quantity("1Gi")))
+                                    .withLimits(Collections.singletonMap("memory", new Quantity("4Gi")))
+                                .endResources()
+                            .endContainer()
+                            .withRestartPolicy("Never")
+                            .addNewVolume()
+                                .withName("shared-storage")
+                                .withNewPersistentVolumeClaim()
+                                    .withClaimName(pvcName)
+                                .endPersistentVolumeClaim()
+                            .endVolume()
+                        .endSpec()
+                    .endTemplate()
+                .endSpec()
+                .build();
+
+        log.info("🚀 Creating Kubernetes Weka Training Job: {}", jobName);
+        kubernetesClient.batch().v1().jobs().inNamespace(namespace).create(job);
+
+        // Wait for job to complete and stream logs
+        waitForJobCompletion(jobName, Duration.ofMinutes(30));  // Weka training may take longer
+    }
+
+    @Override
+    public void runWekaPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir) {
+        log.info("☸️ Starting Kubernetes WEKA prediction job with image={}", imageName);
+
+        Path expectedTestData = containerDataDir.resolve("test_data.csv");
+        if (!Files.exists(expectedTestData)) {
+            throw new IllegalStateException("❌ Missing test_data.csv at: " + expectedTestData);
+        }
+
+        Path expectedModel = containerModelDir.resolve("model.ser");
+        if (!Files.exists(expectedModel)) {
+            throw new IllegalStateException("❌ Missing model.ser at: " + expectedModel);
+        }
+
+        Path relativeData = sharedRoot.relativize(containerDataDir.toAbsolutePath().normalize());
+        Path relativeModel = sharedRoot.relativize(containerModelDir.toAbsolutePath().normalize());
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        String jobName = "weka-prediction-" + System.currentTimeMillis();
+
+        Job job = new JobBuilder()
+                .withNewMetadata()
+                    .withName(jobName)
+                    .withNamespace(namespace)
+                    .withLabels(Collections.singletonMap("app", "weka-prediction"))
+                .endMetadata()
+                .withNewSpec()
+                    .withBackoffLimit(0)
+                    .withTtlSecondsAfterFinished(300)
+                    .withNewTemplate()
+                        .withNewMetadata()
+                            .withLabels(Collections.singletonMap("job-name", jobName))
+                        .endMetadata()
+                        .withNewSpec()
+                            .addNewContainer()
+                                .withName("weka-predictor")
+                                .withImage(imageName)
+                                .withImagePullPolicy("IfNotPresent")
+                                .withArgs("predict")  // Argument to WekaRunner main class
+                                .withEnv(
+                                    new EnvVar("DATA_DIR", dataPath, null),
+                                    new EnvVar("MODEL_DIR", modelPath, null)
+                                )
+                                .withVolumeMounts(new VolumeMountBuilder()
+                                        .withName("shared-storage")
+                                        .withMountPath("/shared")
+                                        .build())
+                                .withNewResources()
+                                    .withRequests(Collections.singletonMap("memory", new Quantity("1Gi")))
+                                    .withLimits(Collections.singletonMap("memory", new Quantity("2Gi")))
+                                .endResources()
+                            .endContainer()
+                            .withRestartPolicy("Never")
+                            .addNewVolume()
+                                .withName("shared-storage")
+                                .withNewPersistentVolumeClaim()
+                                    .withClaimName(pvcName)
+                                .endPersistentVolumeClaim()
+                            .endVolume()
+                        .endSpec()
+                    .endTemplate()
+                .endSpec()
+                .build();
+
+        log.info("🚀 Creating Kubernetes Weka Prediction Job: {}", jobName);
+        kubernetesClient.batch().v1().jobs().inNamespace(namespace).create(job);
+
+        waitForJobCompletion(jobName, Duration.ofMinutes(10));
+    }
+
     private void waitForJobCompletion(String jobName, Duration timeout) {
         log.info("⌛ Waiting for job {} to complete...", jobName);
 

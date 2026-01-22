@@ -7,6 +7,7 @@ import com.cloud_ml_app_thesis.dto.request.train.TrainingStartRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.dto.train.CustomTrainMetadata;
 import com.cloud_ml_app_thesis.dto.train.PredefinedTrainMetadata;
+import com.cloud_ml_app_thesis.dto.train.WekaContainerTrainMetadata;
 import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
@@ -120,7 +121,7 @@ public class TrainingOrchestrator {
             // Init async task
             taskStatusService.initTask(taskId, TaskTypeEnum.TRAINING, username);
 
-            // Prepare training input
+            // Prepare training input (this creates Training, DatasetConfiguration, AlgorithmConfiguration)
             TrainingDataInput input = trainingHelper.configureTrainingDataInputByTrainCase(request, user);
 
             if (input.getErrorResponse() != null) {
@@ -128,15 +129,24 @@ public class TrainingOrchestrator {
                 throw new BadRequestException(input.getErrorResponse().getMessage());
             }
 
-            PredefinedTrainMetadata metadata = new PredefinedTrainMetadata(
+            // Use containerized Weka training (Kubernetes job)
+            // Get dataset info from the configuration
+            DatasetConfiguration datasetConfig = input.getDatasetConfiguration();
+            String datasetBucket = bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET);
+            String datasetKey = datasetConfig.getDataset().getFileName();
+
+            WekaContainerTrainMetadata containerMetadata = new WekaContainerTrainMetadata(
                     input.getTraining().getId(),
-                    input.getDataset(),
-                    input.getDatasetConfiguration().getId(),
-                    input.getAlgorithmConfiguration().getId()
+                    datasetConfig.getId(),
+                    input.getAlgorithmConfiguration().getId(),
+                    datasetBucket,
+                    datasetKey,
+                    datasetConfig.getTargetColumn(),
+                    datasetConfig.getBasicAttributesColumns()
             );
 
-            log.info("🚀 Submitting predefined training [taskId={}] for user={}", taskId, username);
-            asyncManager.trainAsync(taskId, user, metadata);
+            log.info("🚀 Submitting Weka container training [taskId={}] for user={}", taskId, username);
+            asyncManager.trainWekaContainerAsync(taskId, user.getId(), username, containerMetadata);
 
             return taskId;
 

@@ -11,14 +11,26 @@ import java.nio.file.Path;
 public interface ContainerRunner {
 
     /**
-     * Run a training container with the given image and paths
+     * Run a training container with the given image and paths (Python-based custom algorithms)
      */
     void runTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir);
 
     /**
-     * Run a prediction container with the given image and paths
+     * Run a prediction container with the given image and paths (Python-based custom algorithms)
      */
     void runPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir);
+
+    /**
+     * Run a Weka training container (Java-based predefined algorithms)
+     * Uses: java -jar weka-runner.jar train
+     */
+    void runWekaTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir);
+
+    /**
+     * Run a Weka prediction container (Java-based predefined algorithms)
+     * Uses: java -jar weka-runner.jar predict
+     */
+    void runWekaPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir);
 
     /**
      * Load a Docker/container image from a TAR file
