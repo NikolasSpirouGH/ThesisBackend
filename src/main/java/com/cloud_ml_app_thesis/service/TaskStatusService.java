@@ -8,10 +8,12 @@ import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
 import com.cloud_ml_app_thesis.exception.UserInitiatedStopException;
 import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
+import com.cloud_ml_app_thesis.util.ContainerRunner;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
@@ -21,12 +23,21 @@ import org.springframework.transaction.annotation.Propagation;
 import java.time.ZonedDateTime;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class TaskStatusService {
 
     private final TaskStatusRepository taskStatusRepository;
     private final ModelMapper modelMapper;
+    private final ContainerRunner containerRunner;
+
+    public TaskStatusService(
+            TaskStatusRepository taskStatusRepository,
+            ModelMapper modelMapper,
+            @Qualifier("kubernetesRunner") ContainerRunner containerRunner) {
+        this.taskStatusRepository = taskStatusRepository;
+        this.modelMapper = modelMapper;
+        this.containerRunner = containerRunner;
+    }
 
     public AsyncTaskStatusDTO getTaskStatus(String taskId, User user) {
 
@@ -118,6 +129,20 @@ public class TaskStatusService {
             throw new EntityNotFoundException("Task not found: " + taskId);
         }
         log.info("🛑 stopTask({}) by {}", taskId, username);
+
+        // Cancel the Kubernetes job if one is running
+        String jobName = task.getJobName();
+        if (jobName != null && !jobName.isBlank()) {
+            log.info("🛑 Cancelling Kubernetes job: {} for task: {}", jobName, taskId);
+            boolean cancelled = containerRunner.cancelJob(jobName);
+            if (cancelled) {
+                log.info("✅ Successfully cancelled Kubernetes job: {}", jobName);
+            } else {
+                log.warn("⚠️ Could not cancel Kubernetes job: {} (may have already completed)", jobName);
+            }
+        } else {
+            log.info("ℹ️ No Kubernetes job associated with task: {}", taskId);
+        }
     }
 
 
@@ -125,6 +150,16 @@ public class TaskStatusService {
         Boolean result = taskStatusRepository.findStopRequested(taskId);
         log.info("🧪 stopRequested({}) = {}", taskId, result);
         return Boolean.TRUE.equals(result);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateJobName(String taskId, String jobName) {
+        int updated = taskStatusRepository.updateJobName(taskId, jobName);
+        if (updated > 0) {
+            log.info("📋 Updated jobName for task {}: {}", taskId, jobName);
+        } else {
+            log.warn("⚠️ Could not update jobName for task {}", taskId);
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

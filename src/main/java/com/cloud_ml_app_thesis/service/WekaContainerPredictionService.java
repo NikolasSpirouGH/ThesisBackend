@@ -21,6 +21,8 @@ import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
 import com.cloud_ml_app_thesis.util.ContainerRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import weka.core.Attribute;
+import weka.core.Instances;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -43,7 +45,9 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -76,6 +80,8 @@ public class WekaContainerPredictionService {
         ModelExecution execution = null;
         Path dataDir = null;
         Path outputDir = null;
+        String uploadedPredKey = null;
+        String predBucket = null;
 
         log.info("🎯 Starting Weka container prediction [taskId={}] for modelId={} by user={}",
                 taskId, modelId, user.getUsername());
@@ -155,11 +161,41 @@ public class WekaContainerPredictionService {
             Files.copy(modelPath, modelInside, StandardCopyOption.REPLACE_EXISTING);
             log.info("📥 Trained model copied to: {}", modelInside);
 
+            // 4b. For CLASSIFICATION: Extract class labels from training dataset
+            // This replicates what the in-memory approach does in DatasetService.loadPredictionInstancesFromCsv
+            List<String> classLabels = null;
+            if (algorithmConfig.getAlgorithm().getType().getName() == com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum.CLASSIFICATION) {
+                try {
+                    String[] pathParts = com.cloud_ml_app_thesis.util.DatasetUtil.resolveDatasetMinioInfo(datasetConfig.getDataset());
+                    String trainingBucket = pathParts[0];
+                    String trainingObjectName = pathParts[1];
+
+                    try (InputStream trainingStream = minioService.loadObjectAsInputStream(trainingBucket, trainingObjectName)) {
+                        Instances trainingData = com.cloud_ml_app_thesis.util.DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(
+                                datasetConfig, trainingStream, trainingObjectName);
+                        Attribute trainingClassAttr = trainingData.classAttribute();
+                        if (trainingClassAttr != null && trainingClassAttr.isNominal()) {
+                            classLabels = new ArrayList<>();
+                            for (int i = 0; i < trainingClassAttr.numValues(); i++) {
+                                classLabels.add(trainingClassAttr.value(i));
+                            }
+                            log.info("📋 Extracted class labels from training data: {}", classLabels);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ Could not extract class labels from training dataset: {}", e.getMessage());
+                    // Continue without class labels - predictor will try header.ser or fall back
+                }
+            }
+
             // 5. Create params.json with algorithm info
             Map<String, Object> params = new HashMap<>();
             params.put("algorithmType", algorithmConfig.getAlgorithmType().getName().name());
             params.put("targetColumn", datasetConfig.getTargetColumn());
             params.put("basicAttributesColumns", datasetConfig.getBasicAttributesColumns());
+            if (classLabels != null && !classLabels.isEmpty()) {
+                params.put("classLabels", classLabels);  // For classification predictions
+            }
 
             Path paramsFile = dataDir.resolve("params.json");
             ObjectMapper mapper = new ObjectMapper();
@@ -171,9 +207,10 @@ public class WekaContainerPredictionService {
                 throw new UserInitiatedStopException("User requested stop before Weka prediction for task " + taskId);
             }
 
-            // 7. Run Weka prediction container
+            // 7. Run Weka prediction container with callback to store jobName for cancellation support
             log.info("🚀 Running Weka prediction container...");
-            containerRunner.runWekaPredictionContainer(WEKA_RUNNER_IMAGE, dataDir, outputDir);
+            containerRunner.runWekaPredictionContainer(WEKA_RUNNER_IMAGE, dataDir, outputDir,
+                    jobName -> taskStatusService.updateJobName(taskId, jobName));
 
             // 8. Find output file (predictions.csv)
             File predictedFile = Files.walk(outputDir)
@@ -204,10 +241,11 @@ public class WekaContainerPredictionService {
             // 10. Upload results to MinIO
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
             String predKey = user.getUsername() + "_" + timestamp + "_prediction.csv";
-            String predBucket = bucketResolver.resolve(BucketTypeEnum.PREDICTION_RESULTS);
+            predBucket = bucketResolver.resolve(BucketTypeEnum.PREDICTION_RESULTS);
 
             try (InputStream in = new FileInputStream(predictedFile)) {
                 minioService.uploadToMinio(in, predBucket, predKey, predictedFile.length(), "text/csv");
+                uploadedPredKey = predKey;  // Track for cleanup on stop
             }
 
             String resultUrl = modelService.generateMinioUrl(predBucket, predKey);
@@ -249,6 +287,16 @@ public class WekaContainerPredictionService {
         } catch (UserInitiatedStopException e) {
             log.warn("🛑 Weka prediction manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
 
+            // Cleanup MinIO files if they were uploaded
+            if (uploadedPredKey != null && predBucket != null) {
+                try {
+                    minioService.deleteObject(predBucket, uploadedPredKey);
+                    log.info("🧹 Cleaned up prediction result from MinIO: {}/{}", predBucket, uploadedPredKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("⚠️ Failed to clean up prediction result from MinIO: {}", cleanupEx.getMessage());
+                }
+            }
+
             taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
 
             ModelExecutionStatusEnum finalStatus = complete
@@ -268,6 +316,36 @@ public class WekaContainerPredictionService {
             }
 
         } catch (Exception e) {
+            // Check if this was actually a user-initiated stop (job cancelled)
+            if (taskStatusService.stopRequested(taskId)) {
+                log.warn("🛑 Prediction stopped due to job cancellation [taskId={}]: {}", taskId, e.getMessage());
+
+                // Cleanup MinIO files if they were uploaded
+                if (uploadedPredKey != null && predBucket != null) {
+                    try {
+                        minioService.deleteObject(predBucket, uploadedPredKey);
+                        log.info("🧹 Cleaned up prediction result from MinIO: {}/{}", predBucket, uploadedPredKey);
+                    } catch (Exception cleanupEx) {
+                        log.warn("⚠️ Failed to clean up prediction result from MinIO: {}", cleanupEx.getMessage());
+                    }
+                }
+
+                taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
+
+                if (execution != null) {
+                    final Integer executionId = execution.getId();
+                    transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                    transactionTemplate.executeWithoutResult(status -> {
+                        ModelExecution exec = modelExecutionRepository.findById(executionId)
+                                .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
+                        exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED)
+                                .orElseThrow(() -> new EntityNotFoundException("ModelExecutionStatus not found")));
+                        modelExecutionRepository.saveAndFlush(exec);
+                    });
+                }
+                return; // Exit gracefully for user-initiated stop
+            }
+
             log.error("❌ Weka prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);
 
             taskStatusService.taskFailed(taskId, e.getMessage());

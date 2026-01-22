@@ -13,6 +13,7 @@ public class WekaAlgorithmDTO {
     private Integer id;
     private String description;
     private String name;
+    private String type;  // CLASSIFICATION, REGRESSION, CLUSTERING
     private List<WekaAlgorithmOptionDTO> options;
     private String defaultOptionsString;
 }

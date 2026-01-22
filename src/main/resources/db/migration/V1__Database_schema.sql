@@ -481,7 +481,8 @@ CREATE TABLE IF NOT EXISTS async_task_status (
     model_id INTEGER,
     training_id INTEGER,
     execution_id INTEGER,
-    stop_requested BOOLEAN NOT NULL DEFAULT FALSE
+    stop_requested BOOLEAN NOT NULL DEFAULT FALSE,
+    job_name VARCHAR(255)
 );
 
 -- =====================================================

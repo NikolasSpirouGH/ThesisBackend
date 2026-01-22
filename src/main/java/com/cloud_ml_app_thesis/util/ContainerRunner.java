@@ -1,6 +1,7 @@
 package com.cloud_ml_app_thesis.util;
 
 import java.nio.file.Path;
+import java.util.function.Consumer;
 
 /**
  * Interface for running ML training and prediction containers.
@@ -16,9 +17,23 @@ public interface ContainerRunner {
     void runTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir);
 
     /**
+     * Run a training container with job name callback for cancellation support
+     */
+    default void runTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        runTrainingContainer(imageName, containerDataDir, containerModelDir);
+    }
+
+    /**
      * Run a prediction container with the given image and paths (Python-based custom algorithms)
      */
     void runPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir);
+
+    /**
+     * Run a prediction container with job name callback for cancellation support
+     */
+    default void runPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        runPredictionContainer(imageName, containerDataDir, containerModelDir);
+    }
 
     /**
      * Run a Weka training container (Java-based predefined algorithms)
@@ -27,10 +42,24 @@ public interface ContainerRunner {
     void runWekaTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir);
 
     /**
+     * Run a Weka training container with job name callback for cancellation support
+     */
+    default void runWekaTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        runWekaTrainingContainer(imageName, containerDataDir, containerModelDir);
+    }
+
+    /**
      * Run a Weka prediction container (Java-based predefined algorithms)
      * Uses: java -jar weka-runner.jar predict
      */
     void runWekaPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir);
+
+    /**
+     * Run a Weka prediction container with job name callback for cancellation support
+     */
+    default void runWekaPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        runWekaPredictionContainer(imageName, containerDataDir, containerModelDir);
+    }
 
     /**
      * Load a Docker/container image from a TAR file
@@ -46,4 +75,14 @@ public interface ContainerRunner {
      * Pull/download a container image
      */
     void pullImage(String imageName);
+
+    /**
+     * Cancel/kill a running job by name (for Kubernetes, deletes the Job and its pods)
+     * @param jobName the name of the job to cancel
+     * @return true if the job was successfully cancelled, false otherwise
+     */
+    default boolean cancelJob(String jobName) {
+        // Default no-op for non-Kubernetes implementations
+        return false;
+    }
 }

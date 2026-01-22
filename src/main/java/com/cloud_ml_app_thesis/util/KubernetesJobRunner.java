@@ -6,6 +6,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import org.springframework.stereotype.Component;
 
@@ -397,19 +398,49 @@ public class KubernetesJobRunner implements ContainerRunner {
             log.warn("⚠️ Error streaming logs: {}", e.getMessage());
         }
 
-        // Wait for job to complete
-        Job completedJob = kubernetesClient.batch().v1().jobs()
-                .inNamespace(namespace)
-                .withName(jobName)
-                .waitUntilCondition(
-                        job -> job.getStatus() != null &&
-                               (job.getStatus().getSucceeded() != null && job.getStatus().getSucceeded() > 0 ||
-                                job.getStatus().getFailed() != null && job.getStatus().getFailed() > 0),
-                        timeoutMs - (System.currentTimeMillis() - startTime),
-                        TimeUnit.MILLISECONDS
-                );
+        // Wait for job to complete (handles deletion/cancellation)
+        Job completedJob;
+        try {
+            completedJob = kubernetesClient.batch().v1().jobs()
+                    .inNamespace(namespace)
+                    .withName(jobName)
+                    .waitUntilCondition(
+                            job -> {
+                                // Job was deleted (cancelled) - return true to exit the wait
+                                if (job == null) {
+                                    return true;
+                                }
+                                // Job completed or failed
+                                return job.getStatus() != null &&
+                                       (job.getStatus().getSucceeded() != null && job.getStatus().getSucceeded() > 0 ||
+                                        job.getStatus().getFailed() != null && job.getStatus().getFailed() > 0);
+                            },
+                            timeoutMs - (System.currentTimeMillis() - startTime),
+                            TimeUnit.MILLISECONDS
+                    );
+        } catch (Exception e) {
+            // Check if job was deleted (cancelled)
+            Job currentJob = kubernetesClient.batch().v1().jobs()
+                    .inNamespace(namespace)
+                    .withName(jobName)
+                    .get();
+            if (currentJob == null) {
+                log.info("🛑 Job {} was cancelled/deleted", jobName);
+                throw new RuntimeException("Job cancelled: " + jobName, e);
+            }
+            throw e;
+        }
 
-        if (completedJob == null || completedJob.getStatus().getFailed() != null && completedJob.getStatus().getFailed() > 0) {
+        // Job was deleted (cancelled)
+        if (completedJob == null) {
+            log.info("🛑 Job {} was cancelled/deleted", jobName);
+            throw new RuntimeException("Job cancelled: " + jobName);
+        }
+
+        // Job failed
+        if (completedJob.getStatus() != null &&
+            completedJob.getStatus().getFailed() != null &&
+            completedJob.getStatus().getFailed() > 0) {
             log.error("❌ Job {} failed", jobName);
             throw new RuntimeException("Kubernetes job failed: " + jobName);
         }
@@ -645,5 +676,345 @@ public class KubernetesJobRunner implements ContainerRunner {
         log.info("ℹ️ Image pulling in Kubernetes is handled by kubelet automatically");
         log.info("   Ensure imagePullPolicy is set correctly and image is accessible from the cluster");
         // No-op in Kubernetes - images are pulled automatically by kubelet
+    }
+
+    @Override
+    public boolean cancelJob(String jobName) {
+        if (jobName == null || jobName.isBlank()) {
+            log.warn("⚠️ Cannot cancel job: jobName is null or empty");
+            return false;
+        }
+
+        log.info("🛑 Cancelling Kubernetes job: {}", jobName);
+        try {
+            // First, delete the job (this will also terminate the pod)
+            var jobResource = kubernetesClient.batch().v1().jobs()
+                    .inNamespace(namespace)
+                    .withName(jobName);
+
+            Job job = jobResource.get();
+            if (job == null) {
+                log.info("ℹ️ Job {} not found (may have already completed)", jobName);
+                return true; // Job doesn't exist, consider it cancelled
+            }
+
+            // Delete with propagation policy to also delete pods
+            jobResource.withPropagationPolicy(io.fabric8.kubernetes.api.model.DeletionPropagation.FOREGROUND).delete();
+
+            // Also explicitly delete any pods associated with this job
+            kubernetesClient.pods()
+                    .inNamespace(namespace)
+                    .withLabel("job-name", jobName)
+                    .delete();
+
+            log.info("✅ Successfully cancelled job: {}", jobName);
+            return true;
+        } catch (Exception e) {
+            log.error("❌ Failed to cancel job {}: {}", jobName, e.getMessage());
+            return false;
+        }
+    }
+
+    // Overloaded methods with jobName callback for cancellation support
+
+    @Override
+    public void runTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        log.info("☸️ Starting Kubernetes training job with image={}", imageName);
+
+        Path expectedDataset = containerDataDir.resolve("dataset.csv");
+        if (!Files.exists(expectedDataset)) {
+            throw new IllegalStateException("❌ Missing dataset.csv at: " + expectedDataset);
+        }
+
+        if (!Files.exists(containerModelDir)) {
+            throw new IllegalStateException("❌ Output directory (modelDir) does not exist: " + containerModelDir);
+        }
+
+        Path relativeData = sharedRoot.relativize(containerDataDir.toAbsolutePath().normalize());
+        Path relativeModel = sharedRoot.relativize(containerModelDir.toAbsolutePath().normalize());
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        String jobName = "training-" + System.currentTimeMillis();
+
+        // Notify callback with jobName before creating job
+        if (jobNameCallback != null) {
+            jobNameCallback.accept(jobName);
+        }
+
+        Job job = new JobBuilder()
+                .withNewMetadata()
+                    .withName(jobName)
+                    .withNamespace(namespace)
+                    .withLabels(Collections.singletonMap("app", "ml-training"))
+                .endMetadata()
+                .withNewSpec()
+                    .withBackoffLimit(0)
+                    .withTtlSecondsAfterFinished(300)
+                    .withNewTemplate()
+                        .withNewMetadata()
+                            .withLabels(Collections.singletonMap("job-name", jobName))
+                        .endMetadata()
+                        .withNewSpec()
+                            .addNewContainer()
+                                .withName("trainer")
+                                .withImage(imageName)
+                                .withImagePullPolicy("IfNotPresent")
+                                .withCommand("sh", "-c", "python " + dataPath + "/train.py")
+                                .withEnv(
+                                    new EnvVar("DATA_DIR", dataPath, null),
+                                    new EnvVar("MODEL_DIR", modelPath, null)
+                                )
+                                .withVolumeMounts(new VolumeMountBuilder()
+                                        .withName("shared-storage")
+                                        .withMountPath("/shared")
+                                        .build())
+                                .withNewResources()
+                                    .withRequests(Collections.singletonMap("memory", new Quantity("1Gi")))
+                                    .withLimits(Collections.singletonMap("memory", new Quantity("2Gi")))
+                                .endResources()
+                            .endContainer()
+                            .withRestartPolicy("Never")
+                            .addNewVolume()
+                                .withName("shared-storage")
+                                .withNewPersistentVolumeClaim()
+                                    .withClaimName(pvcName)
+                                .endPersistentVolumeClaim()
+                            .endVolume()
+                        .endSpec()
+                    .endTemplate()
+                .endSpec()
+                .build();
+
+        log.info("🚀 Creating Kubernetes Job: {}", jobName);
+        kubernetesClient.batch().v1().jobs().inNamespace(namespace).create(job);
+
+        waitForJobCompletion(jobName, Duration.ofMinutes(10));
+    }
+
+    @Override
+    public void runPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        log.info("☸️ Starting Kubernetes prediction job with image={}", imageName);
+
+        Path relativeData = sharedRoot.relativize(containerDataDir.toAbsolutePath().normalize());
+        Path relativeModel = sharedRoot.relativize(containerModelDir.toAbsolutePath().normalize());
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        String jobName = "prediction-" + System.currentTimeMillis();
+
+        // Notify callback with jobName before creating job
+        if (jobNameCallback != null) {
+            jobNameCallback.accept(jobName);
+        }
+
+        Job job = new JobBuilder()
+                .withNewMetadata()
+                    .withName(jobName)
+                    .withNamespace(namespace)
+                    .withLabels(Collections.singletonMap("app", "ml-prediction"))
+                .endMetadata()
+                .withNewSpec()
+                    .withBackoffLimit(0)
+                    .withTtlSecondsAfterFinished(300)
+                    .withNewTemplate()
+                        .withNewMetadata()
+                            .withLabels(Collections.singletonMap("job-name", jobName))
+                        .endMetadata()
+                        .withNewSpec()
+                            .addNewContainer()
+                                .withName("predictor")
+                                .withImage(imageName)
+                                .withImagePullPolicy("IfNotPresent")
+                                .withCommand("sh", "-c", "python " + dataPath + "/predict.py")
+                                .withEnv(
+                                    new EnvVar("DATA_DIR", dataPath, null),
+                                    new EnvVar("MODEL_DIR", modelPath, null)
+                                )
+                                .withVolumeMounts(new VolumeMountBuilder()
+                                        .withName("shared-storage")
+                                        .withMountPath("/shared")
+                                        .build())
+                                .withNewResources()
+                                    .withRequests(Collections.singletonMap("memory", new Quantity("1Gi")))
+                                    .withLimits(Collections.singletonMap("memory", new Quantity("2Gi")))
+                                .endResources()
+                            .endContainer()
+                            .withRestartPolicy("Never")
+                            .addNewVolume()
+                                .withName("shared-storage")
+                                .withNewPersistentVolumeClaim()
+                                    .withClaimName(pvcName)
+                                .endPersistentVolumeClaim()
+                            .endVolume()
+                        .endSpec()
+                    .endTemplate()
+                .endSpec()
+                .build();
+
+        log.info("🚀 Creating Kubernetes Job: {}", jobName);
+        kubernetesClient.batch().v1().jobs().inNamespace(namespace).create(job);
+
+        waitForJobCompletion(jobName, Duration.ofMinutes(10));
+    }
+
+    @Override
+    public void runWekaTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        log.info("☸️ Starting Kubernetes WEKA training job with image={}", imageName);
+
+        Path expectedDataset = containerDataDir.resolve("dataset.csv");
+        if (!Files.exists(expectedDataset)) {
+            throw new IllegalStateException("❌ Missing dataset.csv at: " + expectedDataset);
+        }
+
+        Path expectedParams = containerDataDir.resolve("params.json");
+        if (!Files.exists(expectedParams)) {
+            throw new IllegalStateException("❌ Missing params.json at: " + expectedParams);
+        }
+
+        if (!Files.exists(containerModelDir)) {
+            throw new IllegalStateException("❌ Output directory (modelDir) does not exist: " + containerModelDir);
+        }
+
+        Path relativeData = sharedRoot.relativize(containerDataDir.toAbsolutePath().normalize());
+        Path relativeModel = sharedRoot.relativize(containerModelDir.toAbsolutePath().normalize());
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        String jobName = "weka-training-" + System.currentTimeMillis();
+
+        // Notify callback with jobName before creating job
+        if (jobNameCallback != null) {
+            jobNameCallback.accept(jobName);
+        }
+
+        Job job = new JobBuilder()
+                .withNewMetadata()
+                    .withName(jobName)
+                    .withNamespace(namespace)
+                    .withLabels(Collections.singletonMap("app", "weka-training"))
+                .endMetadata()
+                .withNewSpec()
+                    .withBackoffLimit(0)
+                    .withTtlSecondsAfterFinished(300)
+                    .withNewTemplate()
+                        .withNewMetadata()
+                            .withLabels(Collections.singletonMap("job-name", jobName))
+                        .endMetadata()
+                        .withNewSpec()
+                            .addNewContainer()
+                                .withName("weka-trainer")
+                                .withImage(imageName)
+                                .withImagePullPolicy("IfNotPresent")
+                                .withArgs("train")
+                                .withEnv(
+                                    new EnvVar("DATA_DIR", dataPath, null),
+                                    new EnvVar("MODEL_DIR", modelPath, null)
+                                )
+                                .withVolumeMounts(new VolumeMountBuilder()
+                                        .withName("shared-storage")
+                                        .withMountPath("/shared")
+                                        .build())
+                                .withNewResources()
+                                    .withRequests(Collections.singletonMap("memory", new Quantity("1Gi")))
+                                    .withLimits(Collections.singletonMap("memory", new Quantity("4Gi")))
+                                .endResources()
+                            .endContainer()
+                            .withRestartPolicy("Never")
+                            .addNewVolume()
+                                .withName("shared-storage")
+                                .withNewPersistentVolumeClaim()
+                                    .withClaimName(pvcName)
+                                .endPersistentVolumeClaim()
+                            .endVolume()
+                        .endSpec()
+                    .endTemplate()
+                .endSpec()
+                .build();
+
+        log.info("🚀 Creating Kubernetes Weka Training Job: {}", jobName);
+        kubernetesClient.batch().v1().jobs().inNamespace(namespace).create(job);
+
+        waitForJobCompletion(jobName, Duration.ofMinutes(30));
+    }
+
+    @Override
+    public void runWekaPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        log.info("☸️ Starting Kubernetes WEKA prediction job with image={}", imageName);
+
+        Path expectedTestData = containerDataDir.resolve("test_data.csv");
+        if (!Files.exists(expectedTestData)) {
+            throw new IllegalStateException("❌ Missing test_data.csv at: " + expectedTestData);
+        }
+
+        Path expectedModel = containerModelDir.resolve("model.ser");
+        if (!Files.exists(expectedModel)) {
+            throw new IllegalStateException("❌ Missing model.ser at: " + expectedModel);
+        }
+
+        Path relativeData = sharedRoot.relativize(containerDataDir.toAbsolutePath().normalize());
+        Path relativeModel = sharedRoot.relativize(containerModelDir.toAbsolutePath().normalize());
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        String jobName = "weka-prediction-" + System.currentTimeMillis();
+
+        // Notify callback with jobName before creating job
+        if (jobNameCallback != null) {
+            jobNameCallback.accept(jobName);
+        }
+
+        Job job = new JobBuilder()
+                .withNewMetadata()
+                    .withName(jobName)
+                    .withNamespace(namespace)
+                    .withLabels(Collections.singletonMap("app", "weka-prediction"))
+                .endMetadata()
+                .withNewSpec()
+                    .withBackoffLimit(0)
+                    .withTtlSecondsAfterFinished(300)
+                    .withNewTemplate()
+                        .withNewMetadata()
+                            .withLabels(Collections.singletonMap("job-name", jobName))
+                        .endMetadata()
+                        .withNewSpec()
+                            .addNewContainer()
+                                .withName("weka-predictor")
+                                .withImage(imageName)
+                                .withImagePullPolicy("IfNotPresent")
+                                .withArgs("predict")
+                                .withEnv(
+                                    new EnvVar("DATA_DIR", dataPath, null),
+                                    new EnvVar("MODEL_DIR", modelPath, null)
+                                )
+                                .withVolumeMounts(new VolumeMountBuilder()
+                                        .withName("shared-storage")
+                                        .withMountPath("/shared")
+                                        .build())
+                                .withNewResources()
+                                    .withRequests(Collections.singletonMap("memory", new Quantity("1Gi")))
+                                    .withLimits(Collections.singletonMap("memory", new Quantity("2Gi")))
+                                .endResources()
+                            .endContainer()
+                            .withRestartPolicy("Never")
+                            .addNewVolume()
+                                .withName("shared-storage")
+                                .withNewPersistentVolumeClaim()
+                                    .withClaimName(pvcName)
+                                .endPersistentVolumeClaim()
+                            .endVolume()
+                        .endSpec()
+                    .endTemplate()
+                .endSpec()
+                .build();
+
+        log.info("🚀 Creating Kubernetes Weka Prediction Job: {}", jobName);
+        kubernetesClient.batch().v1().jobs().inNamespace(namespace).create(job);
+
+        waitForJobCompletion(jobName, Duration.ofMinutes(10));
     }
 }

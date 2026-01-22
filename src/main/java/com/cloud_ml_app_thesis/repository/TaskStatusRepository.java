@@ -40,4 +40,12 @@ public interface TaskStatusRepository extends JpaRepository<AsyncTaskStatus, Str
             @Param("trainingId") Integer trainingId,
             @Param("modelId") Integer modelId
     );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("UPDATE AsyncTaskStatus t SET t.jobName = :jobName WHERE t.taskId = :taskId")
+    int updateJobName(@Param("taskId") String taskId, @Param("jobName") String jobName);
+
+    @Query("SELECT t.jobName FROM AsyncTaskStatus t WHERE t.taskId = :taskId")
+    String findJobName(@Param("taskId") String taskId);
 }

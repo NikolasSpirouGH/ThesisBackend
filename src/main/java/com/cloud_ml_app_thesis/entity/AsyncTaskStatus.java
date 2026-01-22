@@ -42,5 +42,7 @@ public class AsyncTaskStatus {
     @Column(nullable = false)
     private boolean stopRequested;
 
+    // Kubernetes job name for cancellation
+    private String jobName;
 
 }

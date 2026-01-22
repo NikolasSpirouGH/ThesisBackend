@@ -98,6 +98,10 @@ public class WekaContainerTrainingService {
 
         Path dataDir = null;
         Path outputDir = null;
+        String uploadedModelKey = null;
+        String uploadedMetricsKey = null;
+        String modelBucket = null;
+        String metricsBucket = null;
 
         try {
             // 1. Update task to RUNNING
@@ -178,9 +182,10 @@ public class WekaContainerTrainingService {
                 throw new UserInitiatedStopException("User requested stop before Weka training for task " + taskId);
             }
 
-            // 8. Run Weka training container
+            // 8. Run Weka training container with callback to store jobName for cancellation support
             log.info("🚀 Running Weka training container...");
-            containerRunner.runWekaTrainingContainer(WEKA_RUNNER_IMAGE, dataDir, outputDir);
+            containerRunner.runWekaTrainingContainer(WEKA_RUNNER_IMAGE, dataDir, outputDir,
+                    jobName -> taskStatusService.updateJobName(taskId, jobName));
 
             // 9. Read output files
             File modelFile = Files.walk(outputDir)
@@ -204,13 +209,15 @@ public class WekaContainerTrainingService {
 
             String modelKey = modelFolder + modelFile.getName();
             String metricsKey = username + "_" + timestamp + "_" + metricsFile.getName();
-            String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
-            String metricsBucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
+            modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
+            metricsBucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
 
             try (InputStream modelIn = new FileInputStream(modelFile);
                  InputStream metricsIn = new FileInputStream(metricsFile)) {
                 minioService.uploadToMinio(modelIn, modelBucket, modelKey, modelFile.length(), "application/octet-stream");
+                uploadedModelKey = modelKey;  // Track for cleanup on stop
                 minioService.uploadToMinio(metricsIn, metricsBucket, metricsKey, metricsFile.length(), "application/json");
+                uploadedMetricsKey = metricsKey;  // Track for cleanup on stop
             }
 
             log.info("☁️ Model uploaded to MinIO: {}/{}", modelBucket, modelKey);
@@ -284,6 +291,24 @@ public class WekaContainerTrainingService {
         } catch (UserInitiatedStopException e) {
             log.warn("🛑 Training manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
 
+            // Cleanup MinIO files if they were uploaded
+            if (uploadedModelKey != null && modelBucket != null) {
+                try {
+                    minioService.deleteObject(modelBucket, uploadedModelKey);
+                    log.info("🧹 Cleaned up model file from MinIO: {}/{}", modelBucket, uploadedModelKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("⚠️ Failed to clean up model from MinIO: {}", cleanupEx.getMessage());
+                }
+            }
+            if (uploadedMetricsKey != null && metricsBucket != null) {
+                try {
+                    minioService.deleteObject(metricsBucket, uploadedMetricsKey);
+                    log.info("🧹 Cleaned up metrics file from MinIO: {}/{}", metricsBucket, uploadedMetricsKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("⚠️ Failed to clean up metrics from MinIO: {}", cleanupEx.getMessage());
+                }
+            }
+
             taskStatusService.taskStoppedTraining(taskId, trainingId, model != null ? model.getId() : null);
 
             final Integer tid = trainingId;
@@ -302,6 +327,43 @@ public class WekaContainerTrainingService {
             });
 
         } catch (Exception e) {
+            // Check if this was actually a user-initiated stop (job cancelled)
+            if (taskStatusService.stopRequested(taskId)) {
+                log.warn("🛑 Training stopped due to job cancellation [taskId={}]: {}", taskId, e.getMessage());
+
+                // Cleanup MinIO files if they were uploaded
+                if (uploadedModelKey != null && modelBucket != null) {
+                    try {
+                        minioService.deleteObject(modelBucket, uploadedModelKey);
+                        log.info("🧹 Cleaned up model file from MinIO: {}/{}", modelBucket, uploadedModelKey);
+                    } catch (Exception cleanupEx) {
+                        log.warn("⚠️ Failed to clean up model from MinIO: {}", cleanupEx.getMessage());
+                    }
+                }
+                if (uploadedMetricsKey != null && metricsBucket != null) {
+                    try {
+                        minioService.deleteObject(metricsBucket, uploadedMetricsKey);
+                        log.info("🧹 Cleaned up metrics file from MinIO: {}/{}", metricsBucket, uploadedMetricsKey);
+                    } catch (Exception cleanupEx) {
+                        log.warn("⚠️ Failed to clean up metrics from MinIO: {}", cleanupEx.getMessage());
+                    }
+                }
+
+                taskStatusService.taskStoppedTraining(taskId, trainingId, model != null ? model.getId() : null);
+
+                final Integer tid = trainingId;
+                transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                transactionTemplate.executeWithoutResult(status -> {
+                    Training tr = trainingRepository.findById(tid)
+                            .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+                    tr.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
+                            .orElseThrow(() -> new EntityNotFoundException("TrainingStatus not found")));
+                    tr.setFinishedDate(ZonedDateTime.now());
+                    trainingRepository.saveAndFlush(tr);
+                });
+                return; // Exit gracefully for user-initiated stop
+            }
+
             log.error("❌ Weka training failed [taskId={}]: {}", taskId, e.getMessage(), e);
 
             final Integer tid = trainingId;

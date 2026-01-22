@@ -105,6 +105,12 @@ public class CustomTrainingService {
 
         Path dataDir = null;
         Path outputDir = null;
+        String uploadedModelKey = null;
+        String uploadedMetricsKey = null;
+        String uploadedLabelMappingKey = null;
+        String uploadedFeatureColumnsKey = null;
+        String modelBucket = null;
+        String metricsBucket = null;
 
         Training training = null;
 
@@ -138,12 +144,25 @@ public class CustomTrainingService {
 
             DatasetConfiguration datasetConfig = datasetConfigurationRepository.findById(metadata.datasetConfigurationId())
                     .orElseThrow(() -> new IllegalStateException("DatasetConfiguration not found"));
-            training = new Training();
-            training.setDatasetConfiguration(datasetConfig);
-            training.setStartedDate(ZonedDateTime.now());
-            training.setStatus(running);
-            training.setUser(entityManager.getReference(User.class, userId));
-            training = trainingRepository.save(training);
+
+            // Check if Training was pre-created (retrain mode) or needs to be created (fresh training)
+            if (metadata.trainingId() != null) {
+                // Retrain mode: use pre-created Training
+                training = trainingRepository.findById(metadata.trainingId())
+                        .orElseThrow(() -> new IllegalStateException("Training not found: " + metadata.trainingId()));
+                training.setStartedDate(ZonedDateTime.now());
+                training.setStatus(running);
+                training = trainingRepository.save(training);
+                log.info("🔁 Using pre-created Training for retrain: trainingId={}", training.getId());
+            } else {
+                // Fresh training: create new Training
+                training = new Training();
+                training.setDatasetConfiguration(datasetConfig);
+                training.setStartedDate(ZonedDateTime.now());
+                training.setStatus(running);
+                training.setUser(entityManager.getReference(User.class, userId));
+                training = trainingRepository.save(training);
+            }
             trainingId = training.getId();
             entityManager.detach(training);
             log.info("⏳ Sleeping for 10 seconds before starting training (for manual stop testing)");
@@ -334,8 +353,9 @@ public class CustomTrainingService {
             if (taskStatusService.stopRequested(taskId)) {
                 throw new UserInitiatedStopException("User requested stop before Docker training for task " + taskId);
             }
-            // Run training container
-            containerRunner.runTrainingContainer(dockerImageTag, dataDir, outputDir);
+            // Run training container with callback to store jobName for cancellation support
+            containerRunner.runTrainingContainer(dockerImageTag, dataDir, outputDir,
+                    jobName -> taskStatusService.updateJobName(taskId, jobName));
 
             log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
             log.info("✅ Copied dataset.csv");
@@ -379,13 +399,15 @@ public class CustomTrainingService {
 
             String modelKey = modelFolder + modelFile.getName();
             String metricsKey = username + "_" + timestamp + "_" + metricsFile.getName();  // Metrics stays flat
-            String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
-            String metricsBucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
+            modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
+            metricsBucket = bucketResolver.resolve(BucketTypeEnum.METRICS);
 
             try (InputStream in = new FileInputStream(modelFile);
                  InputStream metricsIn = new FileInputStream(metricsFile)) {
                 minioService.uploadToMinio(in, modelBucket, modelKey, modelFile.length(), "application/octet-stream");
+                uploadedModelKey = modelKey;  // Track for cleanup on stop
                 minioService.uploadToMinio(metricsIn, metricsBucket, metricsKey, metricsFile.length(), "application/json");
+                uploadedMetricsKey = metricsKey;  // Track for cleanup on stop
             }
 
             log.info("Model uploaded to MinIO folder: {}/{}", modelBucket, modelFolder);
@@ -399,6 +421,7 @@ public class CustomTrainingService {
                 String labelMappingKey = modelFolder + labelMappingFile.getName();
                 try (InputStream labelMappingIn = new FileInputStream(labelMappingFile)) {
                     minioService.uploadToMinio(labelMappingIn, modelBucket, labelMappingKey, labelMappingFile.length(), "application/json");
+                    uploadedLabelMappingKey = labelMappingKey;  // Track for cleanup on stop
                     labelMappingUrl = modelService.generateMinioUrl(modelBucket, labelMappingKey);
                     log.info("Label mapping uploaded to: {}/{}", modelBucket, labelMappingKey);
                 }
@@ -408,6 +431,7 @@ public class CustomTrainingService {
                 String featureColumnsKey = modelFolder + featureColumnsFile.getName();
                 try (InputStream featureColumnsIn = new FileInputStream(featureColumnsFile)) {
                     minioService.uploadToMinio(featureColumnsIn, modelBucket, featureColumnsKey, featureColumnsFile.length(), "application/json");
+                    uploadedFeatureColumnsKey = featureColumnsKey;  // Track for cleanup on stop
                     featureColumnsUrl = modelService.generateMinioUrl(modelBucket, featureColumnsKey);
                     log.info("Feature columns uploaded to: {}/{}", modelBucket, featureColumnsKey);
                 }
@@ -475,6 +499,40 @@ public class CustomTrainingService {
         }catch(UserInitiatedStopException e) {
             log.warn("🛑 Training manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
 
+            // Cleanup MinIO files if they were uploaded
+            if (uploadedModelKey != null && modelBucket != null) {
+                try {
+                    minioService.deleteObject(modelBucket, uploadedModelKey);
+                    log.info("🧹 Cleaned up model file from MinIO: {}/{}", modelBucket, uploadedModelKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("⚠️ Failed to clean up model from MinIO: {}", cleanupEx.getMessage());
+                }
+            }
+            if (uploadedMetricsKey != null && metricsBucket != null) {
+                try {
+                    minioService.deleteObject(metricsBucket, uploadedMetricsKey);
+                    log.info("🧹 Cleaned up metrics file from MinIO: {}/{}", metricsBucket, uploadedMetricsKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("⚠️ Failed to clean up metrics from MinIO: {}", cleanupEx.getMessage());
+                }
+            }
+            if (uploadedLabelMappingKey != null && modelBucket != null) {
+                try {
+                    minioService.deleteObject(modelBucket, uploadedLabelMappingKey);
+                    log.info("🧹 Cleaned up label mapping from MinIO: {}/{}", modelBucket, uploadedLabelMappingKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("⚠️ Failed to clean up label mapping from MinIO: {}", cleanupEx.getMessage());
+                }
+            }
+            if (uploadedFeatureColumnsKey != null && modelBucket != null) {
+                try {
+                    minioService.deleteObject(modelBucket, uploadedFeatureColumnsKey);
+                    log.info("🧹 Cleaned up feature columns from MinIO: {}/{}", modelBucket, uploadedFeatureColumnsKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("⚠️ Failed to clean up feature columns from MinIO: {}", cleanupEx.getMessage());
+                }
+            }
+
             taskStatusService.taskStoppedTraining(taskId, trainingId, model != null ? model.getId() : null);
 
             // User-initiated stop should always result in FAILED status
@@ -496,6 +554,61 @@ public class CustomTrainingService {
                 trainingRepository.saveAndFlush(tr);
             });
         } catch (Exception e) {
+            // Check if this was actually a user-initiated stop (job cancelled)
+            if (taskStatusService.stopRequested(taskId)) {
+                log.warn("🛑 Training stopped due to job cancellation [taskId={}]: {}", taskId, e.getMessage());
+
+                // Cleanup MinIO files if they were uploaded
+                if (uploadedModelKey != null && modelBucket != null) {
+                    try {
+                        minioService.deleteObject(modelBucket, uploadedModelKey);
+                        log.info("🧹 Cleaned up model file from MinIO: {}/{}", modelBucket, uploadedModelKey);
+                    } catch (Exception cleanupEx) {
+                        log.warn("⚠️ Failed to clean up model from MinIO: {}", cleanupEx.getMessage());
+                    }
+                }
+                if (uploadedMetricsKey != null && metricsBucket != null) {
+                    try {
+                        minioService.deleteObject(metricsBucket, uploadedMetricsKey);
+                        log.info("🧹 Cleaned up metrics file from MinIO: {}/{}", metricsBucket, uploadedMetricsKey);
+                    } catch (Exception cleanupEx) {
+                        log.warn("⚠️ Failed to clean up metrics from MinIO: {}", cleanupEx.getMessage());
+                    }
+                }
+                if (uploadedLabelMappingKey != null && modelBucket != null) {
+                    try {
+                        minioService.deleteObject(modelBucket, uploadedLabelMappingKey);
+                        log.info("🧹 Cleaned up label mapping from MinIO: {}/{}", modelBucket, uploadedLabelMappingKey);
+                    } catch (Exception cleanupEx) {
+                        log.warn("⚠️ Failed to clean up label mapping from MinIO: {}", cleanupEx.getMessage());
+                    }
+                }
+                if (uploadedFeatureColumnsKey != null && modelBucket != null) {
+                    try {
+                        minioService.deleteObject(modelBucket, uploadedFeatureColumnsKey);
+                        log.info("🧹 Cleaned up feature columns from MinIO: {}/{}", modelBucket, uploadedFeatureColumnsKey);
+                    } catch (Exception cleanupEx) {
+                        log.warn("⚠️ Failed to clean up feature columns from MinIO: {}", cleanupEx.getMessage());
+                    }
+                }
+
+                taskStatusService.taskStoppedTraining(taskId, trainingId, model != null ? model.getId() : null);
+
+                final Integer tid = trainingId;
+                if (tid != null) {
+                    transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                    transactionTemplate.executeWithoutResult(status -> {
+                        Training tr = trainingRepository.findById(tid)
+                                .orElseThrow(() -> new EntityNotFoundException("Training not found"));
+                        tr.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.FAILED)
+                                .orElseThrow(() -> new EntityNotFoundException("TrainingStatus not found")));
+                        tr.setFinishedDate(ZonedDateTime.now());
+                        trainingRepository.saveAndFlush(tr);
+                    });
+                }
+                return; // Exit gracefully for user-initiated stop
+            }
+
             log.error("❌ Training failed [taskId={}]: {}", taskId, e.getMessage(), e);
 
             // Only update Training entity, let taskStatusService handle the task

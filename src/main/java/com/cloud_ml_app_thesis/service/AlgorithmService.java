@@ -104,6 +104,7 @@ public class AlgorithmService {
                 .map(algorithm -> WekaAlgorithmDTO.builder()
                         .id(algorithm.getId())
                         .name(algorithm.getName())
+                        .type(algorithm.getType() != null ? algorithm.getType().getName().name() : null)
                         .build()
                 )
                 .toList();
@@ -219,6 +220,7 @@ public class AlgorithmService {
                 .id(algorithm.getId())
                 .name(algorithm.getName())
                 .description(algorithm.getDescription())
+                .type(algorithm.getType() != null ? algorithm.getType().getName().name() : null)
                 .build();
     }
 
@@ -239,6 +241,7 @@ public class AlgorithmService {
                 .id(algorithm.getId())
                 .name(algorithm.getName())
                 .description(algorithm.getDescription())
+                .type(algorithm.getType() != null ? algorithm.getType().getName().name() : null)
                 .options(parsedOptions)
                 .defaultOptionsString(algorithm.getDefaultOptions())
                 .build();

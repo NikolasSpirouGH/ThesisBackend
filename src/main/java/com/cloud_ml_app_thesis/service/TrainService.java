@@ -496,25 +496,24 @@ public class TrainService {
                         training.getStatus() != null && training.getStatus().getName() != null
                                 ? training.getStatus().getName().name()
                                 : null,
-                        training.getModel() != null ? training.getModel().getId() : null
+                        training.getModel() != null ? training.getModel().getId() : null,
+                        training.getAlgorithmConfiguration() != null ? "PREDEFINED" : "CUSTOM"
                 ))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<RetrainModelOptionDTO> getRetrainModelOptions(User user) {
-        Comparator<Model> byTrainingStarted = Comparator.comparing(
-                (Model model) -> {
-                    Training training = model.getTraining();
-                    return training != null ? training.getStartedDate() : null;
-                },
+        Comparator<Model> byFinalizationDate = Comparator.comparing(
+                Model::getFinalizationDate,
                 Comparator.nullsLast(Comparator.naturalOrder())
         ).reversed();
 
         var models = modelRepository.findAllByTraining_User(user);
 
         return models.stream()
-                .sorted(byTrainingStarted)
+                .filter(Model::isFinalized) // Only show finalized models
+                .sorted(byFinalizationDate)
                 .map(model -> {
                     Training training = model.getTraining();
                     String algorithmName = training != null ? AlgorithmUtil.resolveAlgorithmName(training) : null;
@@ -522,18 +521,19 @@ public class TrainService {
                     String status = model.getStatus() != null && model.getStatus().getName() != null
                             ? model.getStatus().getName().name()
                             : null;
+                    // Model name is always set for finalized models
                     String modelName = model.getName();
-                    if (modelName == null || modelName.isBlank()) {
-                        modelName = "Model " + model.getId();
-                    }
                     Integer trainingId = training != null ? training.getId() : null;
+                    String trainingType = (training != null && training.getAlgorithmConfiguration() != null)
+                            ? "PREDEFINED" : "CUSTOM";
                     return new RetrainModelOptionDTO(
                             model.getId(),
                             modelName,
                             trainingId,
                             algorithmName,
                             datasetName,
-                            status
+                            status,
+                            trainingType
                     );
                 })
                 .toList();

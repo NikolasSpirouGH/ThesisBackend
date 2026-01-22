@@ -67,6 +67,8 @@ public class CustomModelExecutionService {
         ModelExecution execution = null;
         Path dataDir = null;
         Path outputDir = null;
+        String uploadedPredKey = null;
+        String predBucket = null;
         log.info("🎯 [SYNC] Starting prediction [taskId={}] for modelId={} by user={}", taskId, modelId, user.getUsername());
 
         AsyncTaskStatus task = taskStatusRepository.findById(taskId)
@@ -191,7 +193,9 @@ public class CustomModelExecutionService {
                 throw new RuntimeException("Could not extract algorithm.py for prediction", e);
             }
 
-            containerRunner.runPredictionContainer(activeImage.getName(), dataDir, outputDir);
+            // Run prediction container with callback to store jobName for cancellation support
+            containerRunner.runPredictionContainer(activeImage.getName(), dataDir, outputDir,
+                    jobName -> taskStatusService.updateJobName(taskId, jobName));
 
             // 6. Βρες output αρχείο
             File predictedFile = Files.walk(outputDir)
@@ -220,10 +224,11 @@ public class CustomModelExecutionService {
             // 8. Upload σε MinIO
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
             String predKey = user.getUsername() + "_" + timestamp + "_" + predictedFile.getName();
-            String predBucket = bucketResolver.resolve(BucketTypeEnum.PREDICTION_RESULTS);
+            predBucket = bucketResolver.resolve(BucketTypeEnum.PREDICTION_RESULTS);
 
             try (InputStream in = new FileInputStream(predictedFile)) {
                 minioService.uploadToMinio(in, predBucket, predKey, predictedFile.length(), "text/csv");
+                uploadedPredKey = predKey;  // Track for cleanup on stop
             }
 
             String resultUrl = modelService.generateMinioUrl(predBucket, predKey);
@@ -265,6 +270,16 @@ public class CustomModelExecutionService {
         } catch (UserInitiatedStopException e) {
             log.warn("🛑 Custom prediction manually stopped by user [taskId={}]: {}", taskId, e.getMessage());
 
+            // Cleanup MinIO files if they were uploaded
+            if (uploadedPredKey != null && predBucket != null) {
+                try {
+                    minioService.deleteObject(predBucket, uploadedPredKey);
+                    log.info("🧹 Cleaned up prediction result from MinIO: {}/{}", predBucket, uploadedPredKey);
+                } catch (Exception cleanupEx) {
+                    log.warn("⚠️ Failed to clean up prediction result from MinIO: {}", cleanupEx.getMessage());
+                }
+            }
+
             taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
 
             ModelExecutionStatusEnum finalStatus = complete
@@ -284,6 +299,36 @@ public class CustomModelExecutionService {
                 });
             }
         } catch (Exception e) {
+            // Check if this was actually a user-initiated stop (job cancelled)
+            if (taskStatusService.stopRequested(taskId)) {
+                log.warn("🛑 Prediction stopped due to job cancellation [taskId={}]: {}", taskId, e.getMessage());
+
+                // Cleanup MinIO files if they were uploaded
+                if (uploadedPredKey != null && predBucket != null) {
+                    try {
+                        minioService.deleteObject(predBucket, uploadedPredKey);
+                        log.info("🧹 Cleaned up prediction result from MinIO: {}/{}", predBucket, uploadedPredKey);
+                    } catch (Exception cleanupEx) {
+                        log.warn("⚠️ Failed to clean up prediction result from MinIO: {}", cleanupEx.getMessage());
+                    }
+                }
+
+                taskStatusService.taskStoppedExecution(taskId, execution != null ? execution.getId() : null);
+
+                if (execution != null) {
+                    final Integer executionId = execution.getId();
+                    transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                    transactionTemplate.executeWithoutResult(status -> {
+                        ModelExecution exec = modelExecutionRepository.findById(executionId)
+                                .orElseThrow(() -> new EntityNotFoundException("ModelExecution not found"));
+                        exec.setStatus(modelExecutionStatusRepository.findByName(ModelExecutionStatusEnum.FAILED)
+                                .orElseThrow(() -> new EntityNotFoundException("ModelExecutionStatus not found")));
+                        modelExecutionRepository.saveAndFlush(exec);
+                    });
+                }
+                return; // Exit gracefully for user-initiated stop
+            }
+
             log.error("❌ Custom prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);
 
             // Task -> FAILED

@@ -6,5 +6,6 @@ public record RetrainModelOptionDTO(
         Integer trainingId,
         String algorithmName,
         String datasetName,
-        String status
+        String status,
+        String trainingType  // "PREDEFINED" (Weka) or "CUSTOM"
 ) {}
