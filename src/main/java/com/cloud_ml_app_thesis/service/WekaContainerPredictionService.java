@@ -20,6 +20,7 @@ import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
 import com.cloud_ml_app_thesis.util.ContainerRunner;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import weka.core.Attribute;
 import weka.core.Instances;
@@ -173,6 +174,16 @@ public class WekaContainerPredictionService {
                     try (InputStream trainingStream = minioService.loadObjectAsInputStream(trainingBucket, trainingObjectName)) {
                         Instances trainingData = com.cloud_ml_app_thesis.util.DatasetUtil.loadDatasetInstancesByDatasetConfigurationFromMinio(
                                 datasetConfig, trainingStream, trainingObjectName);
+
+                        // Convert numeric class to nominal if needed (matching training behavior)
+                        if (trainingData.classAttribute() != null && trainingData.classAttribute().isNumeric()) {
+                            log.info("🔄 Converting numeric class to nominal in training data to extract labels");
+                            weka.filters.unsupervised.attribute.NumericToNominal convert = new weka.filters.unsupervised.attribute.NumericToNominal();
+                            convert.setAttributeIndices(String.valueOf(trainingData.classIndex() + 1));
+                            convert.setInputFormat(trainingData);
+                            trainingData = weka.filters.Filter.useFilter(trainingData, convert);
+                        }
+
                         Attribute trainingClassAttr = trainingData.classAttribute();
                         if (trainingClassAttr != null && trainingClassAttr.isNominal()) {
                             classLabels = new ArrayList<>();

@@ -46,14 +46,14 @@ public class BasicFullWekaFlowIT {
     @Test
     @Order(1)
     void shouldTrainDataWithWekaAlgorithm() throws IOException {
-        File trainFile = new ClassPathResource("weka_test/SimpleKmeans/Clustering_-_Training__clustering_train_csv_.csv").getFile();
+        File trainFile = new ClassPathResource("weka_test/Logistic_Regression/Logistic_Regression_-_Training__logreg_train_csv_.csv").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
                 .contentType(ContentType.MULTIPART)
                 //.multiPart("modelId", 150)
                 .multiPart("file", trainFile)
-                .multiPart("algorithmId", 68)
+                .multiPart("algorithmId", 26)
           //      .multiPart("basicCharacteristicsColumns", "1,2,3")
           //      .multiPart("targetClassColumn", "5")
                 .when()
@@ -121,7 +121,7 @@ public class BasicFullWekaFlowIT {
     @Order(3)
     void shouldPredictModel() throws IOException {
         Assumptions.assumeTrue(modelId != null, "Skipping test because modelId was not initialized");
-        File predictionFile = new ClassPathResource("weka_test/SimpleKmeans/Clustering_-_Prediction__clustering_predict_csv_.csv").getFile();
+        File predictionFile = new ClassPathResource("weka_test/Logistic_Regression/Logistic_Regression_-_Prediction__logreg_predict_csv_.csv").getFile();
 
         Response predictionResponse = given()
                 .header("Authorization", "Bearer " + jwtToken)
