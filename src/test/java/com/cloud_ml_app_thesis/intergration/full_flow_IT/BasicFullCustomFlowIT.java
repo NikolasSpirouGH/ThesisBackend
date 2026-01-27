@@ -48,8 +48,8 @@ public class BasicFullCustomFlowIT {
     @Test
     @Order(1)
     void shouldCreateCustomAlgorithm() throws IOException {
-        File parametersFile = new ClassPathResource("custom_test/animal_classifier/parameters.json").getFile();
-        File dockerTarFile = new ClassPathResource("custom_test/animal_classifier/animal_classifier.tar").getFile();
+        File parametersFile = new ClassPathResource("custom_test/custom_purchase_predictor/parameters.json").getFile();
+        File dockerTarFile = new ClassPathResource("custom_test/custom_purchase_predictor/custom_purchase_predictor.tar").getFile();
 
         Response response = given()
                 .auth().oauth2(jwtToken)
@@ -86,7 +86,8 @@ public class BasicFullCustomFlowIT {
     void shouldTrainCustomModel() throws IOException {
         Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
 
-        File datasetFile = new ClassPathResource("custom_test/animal_classifier/training_data.csv").getFile();
+        File datasetFile = new ClassPathResource("custom_test/custom_purchase_predictor/customer_purchase_predictor.tar").getFile();
+        File parametersFile = new ClassPathSource("").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
