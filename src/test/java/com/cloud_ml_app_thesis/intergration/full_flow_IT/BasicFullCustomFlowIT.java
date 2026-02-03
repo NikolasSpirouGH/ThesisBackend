@@ -87,7 +87,6 @@ public class BasicFullCustomFlowIT {
         Assumptions.assumeTrue(algorithmId != null, "Skipping test because algorithmId is null");
 
         File datasetFile = new ClassPathResource("custom_test/custom_purchase_predictor/customer_purchase_predictor.tar").getFile();
-        File parametersFile = new ClassPathSource("").getFile();
 
         Response rawResponse = given()
                 .auth().oauth2(jwtToken)
