@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
 
 import java.time.ZonedDateTime;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -82,7 +83,8 @@ public class TaskStatusService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void initTask(String taskId, TaskTypeEnum taskType, String username) {
+    public String initTask(TaskTypeEnum taskType, String username) {
+        String taskId = UUID.randomUUID().toString();
         AsyncTaskStatus status = AsyncTaskStatus.builder()
                 .taskId(taskId)
                 .taskType(taskType)
@@ -93,6 +95,7 @@ public class TaskStatusService {
 
         taskStatusRepository.save(status);
         log.info("[TASK INIT] [{}] [{}] by user={}", taskType, taskId, username);
+        return taskId;
     }
 
 

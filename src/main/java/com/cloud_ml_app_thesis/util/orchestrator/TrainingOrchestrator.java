@@ -1,81 +1,62 @@
 package com.cloud_ml_app_thesis.util.orchestrator;
 
-import com.cloud_ml_app_thesis.config.BucketResolver;
 import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.train.CustomTrainRequest;
 import com.cloud_ml_app_thesis.dto.request.train.TrainingStartRequest;
-import com.cloud_ml_app_thesis.dto.response.GenericResponse;
-import com.cloud_ml_app_thesis.dto.train.CustomTrainMetadata;
-import com.cloud_ml_app_thesis.dto.train.PredefinedTrainMetadata;
-import com.cloud_ml_app_thesis.dto.train.WekaContainerTrainMetadata;
+import com.cloud_ml_app_thesis.dto.train.DeferredCustomTrainInput;
+import com.cloud_ml_app_thesis.dto.train.DeferredWekaTrainInput;
 import com.cloud_ml_app_thesis.entity.*;
-import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.model.Model;
-import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
-import com.cloud_ml_app_thesis.enumeration.DatasetFunctionalTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
-import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
-import com.cloud_ml_app_thesis.enumeration.status.TrainingStatusEnum;
 import com.cloud_ml_app_thesis.exception.BadRequestException;
-import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.*;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
-import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
-import com.cloud_ml_app_thesis.service.DatasetService;
-import com.cloud_ml_app_thesis.service.MinioService;
 import com.cloud_ml_app_thesis.service.TaskStatusService;
 import com.cloud_ml_app_thesis.util.AsyncManager;
-import com.cloud_ml_app_thesis.util.TrainingHelper;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.modelmapper.ModelMapper;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class TrainingOrchestrator {
 
-    private final DatasetService datasetService;
-    private final DatasetConfigurationRepository datasetConfigurationRepository;
-    private final BucketResolver bucketResolver;
     private final CustomAlgorithmRepository customAlgorithmRepository;
     private final AsyncManager asyncManager;
-    private final MinioService minioService;
-    private final TrainingHelper trainingHelper;
     private final TaskStatusService taskStatusService;
     private final TrainingRepository trainingRepository;
-    private final TrainingStatusRepository trainingStatusRepository;
     private final ModelRepository modelRepository;
 
+    /**
+     * Handles custom algorithm training requests.
+     * Returns taskId immediately after validation; MinIO upload and entity creation happen async.
+     */
     public String handleCustomTrainingRequest(@Valid CustomTrainRequest request, AccountDetails accountDetails) {
         User user = accountDetails.getUser();
-        String taskId = UUID.randomUUID().toString();
         String username = accountDetails.getUsername();
+
+        // ========== VALIDATION (synchronous - throws immediately on error) ==========
 
         // Detect retrain mode
         boolean hasTrainingId = request.getTrainingId() != null;
         boolean hasModelId = request.getModelId() != null;
         boolean retrainMode = hasTrainingId || hasModelId;
 
-        // Validation
         if (hasTrainingId && hasModelId) {
             throw new BadRequestException("Cannot retrain from both a training and a model. Choose one.");
         }
 
-        // Find base training for retrain mode
+        // Find base training for retrain mode (for validation only)
         Training retrainedFrom = null;
         if (hasTrainingId) {
             retrainedFrom = trainingRepository.findById(request.getTrainingId())
@@ -98,7 +79,7 @@ public class TrainingOrchestrator {
             log.info("🔁 Re-training custom model from modelId={}, trainingId={}", model.getId(), retrainedFrom.getId());
         }
 
-        // Resolve algorithm
+        // Resolve and validate algorithm
         CustomAlgorithm algorithm;
         if (request.getAlgorithmId() != null) {
             algorithm = customAlgorithmRepository.findWithOwnerById(request.getAlgorithmId())
@@ -116,134 +97,105 @@ public class TrainingOrchestrator {
             throw new AccessDeniedException("User not authorized to train this algorithm");
         }
 
-        taskStatusService.initTask(taskId, TaskTypeEnum.TRAINING, username);
-
-        // Resolve dataset
-        Dataset dataset;
+        // Validate dataset requirement for non-retrain mode
         boolean hasFile = request.getDatasetFile() != null && !request.getDatasetFile().isEmpty();
-
-        if (hasFile) {
-            dataset = datasetService.uploadDataset(
-                    request.getDatasetFile(), user, DatasetFunctionalTypeEnum.TRAIN
-            ).getDataHeader();
-            log.info("📂 New dataset uploaded: {}", dataset.getFileName());
-        } else if (retrainMode) {
-            DatasetConfiguration baseDatasetConfig = retrainedFrom.getDatasetConfiguration();
-            if (baseDatasetConfig == null || baseDatasetConfig.getDataset() == null) {
-                throw new BadRequestException("Base training has no dataset configuration.");
-            }
-            dataset = baseDatasetConfig.getDataset();
-            log.info("📋 Using dataset from base training: {}", dataset.getFileName());
-        } else {
+        if (!hasFile && !retrainMode) {
             throw new BadRequestException("datasetFile is required for new training.");
         }
 
-        // Resolve dataset configuration
-        DatasetConfiguration datasetConfig = new DatasetConfiguration();
-        datasetConfig.setDataset(dataset);
-        datasetConfig.setUploadDate(ZonedDateTime.now());
+        // ========== SAVE TO TEMP + INIT TASK + ASYNC (non-blocking) ==========
 
-        if (request.getBasicAttributesColumns() != null) {
-            datasetConfig.setBasicAttributesColumns(request.getBasicAttributesColumns());
-        } else if (retrainMode && retrainedFrom.getDatasetConfiguration() != null) {
-            datasetConfig.setBasicAttributesColumns(retrainedFrom.getDatasetConfiguration().getBasicAttributesColumns());
-        }
-
-        if (request.getTargetColumn() != null) {
-            datasetConfig.setTargetColumn(request.getTargetColumn());
-        } else if (retrainMode && retrainedFrom.getDatasetConfiguration() != null) {
-            datasetConfig.setTargetColumn(retrainedFrom.getDatasetConfiguration().getTargetColumn());
-        }
-
-        datasetConfig = datasetConfigurationRepository.save(datasetConfig);
-
-        // Create Training entity with retrain linkage
-        // Note: CustomAlgorithmConfiguration will be created by CustomTrainingService
-        Training training = new Training();
-        training.setUser(user);
-        training.setDatasetConfiguration(datasetConfig);
-        training.setRetrainedFrom(retrainedFrom);
-        training.setStatus(trainingStatusRepository.findByName(TrainingStatusEnum.REQUESTED)
-                .orElseThrow(() -> new EntityNotFoundException("TrainingStatus REQUESTED not found")));
-        training = trainingRepository.save(training);
-
-        log.info("✅ Custom training created: trainingId={}, algorithmId={}, retrainedFrom={}",
-                training.getId(), algorithm.getId(), retrainedFrom != null ? retrainedFrom.getId() : "none");
-
-        // Handle parameters file
-        String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
-        String paramsKey = null;
-        String paramsBucket = null;
-
-        if (request.getParametersFile() != null && !request.getParametersFile().isEmpty()) {
-            paramsKey = user.getUsername() + "_" + timestamp + "_" + request.getParametersFile().getOriginalFilename();
-            paramsBucket = bucketResolver.resolve(BucketTypeEnum.PARAMETERS);
-            try {
-                minioService.uploadObjectToBucket(request.getParametersFile(), paramsBucket, paramsKey);
-            } catch (IOException e) {
-                throw new FileProcessingException("Failed to upload parameters file to PARAMETERS bucket", e);
-            }
-            log.info("✅ Uploaded parameters file to MinIO: {}/{}", paramsBucket, paramsKey);
-        } else {
-            log.info("📭 No params.json provided. Will use default algorithm parameters.");
-        }
-
-        CustomTrainMetadata metadata = new CustomTrainMetadata(
-                dataset.getFileName(),
-                bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET),
-                datasetConfig.getId(),
-                algorithm.getId(),
-                paramsKey,
-                paramsBucket,
-                training.getId()  // Pass pre-created training ID
-        );
-
-        asyncManager.customTrainAsync(taskId, user.getId(), username, metadata);
-
-        return taskId;
-    }
-
-    public String handleTrainingRequest(@Valid TrainingStartRequest request, User user) {
-        String taskId = UUID.randomUUID().toString();
-        String username = user.getUsername();
+        String taskId = taskStatusService.initTask(TaskTypeEnum.TRAINING, username);
+        log.info("📋 Task initialized [taskId={}] for custom training", taskId);
 
         try {
-            // Init async task
-            taskStatusService.initTask(taskId, TaskTypeEnum.TRAINING, username);
+            // Copy files to temp (fast local disk operation)
+            Path tempDataset = copyToTemp(request.getDatasetFile());
+            Path tempParams = copyToTemp(request.getParametersFile());
 
-            // Prepare training input (this creates Training, DatasetConfiguration, AlgorithmConfiguration)
-            TrainingDataInput input = trainingHelper.configureTrainingDataInputByTrainCase(request, user);
-
-            if (input.getErrorResponse() != null) {
-                log.warn("⚠️ Invalid training input [taskId={}, reason={}]", taskId, input.getErrorResponse().getMessage());
-                throw new BadRequestException(input.getErrorResponse().getMessage());
-            }
-
-            // Use containerized Weka training (Kubernetes job)
-            // Get dataset info from the configuration
-            DatasetConfiguration datasetConfig = input.getDatasetConfiguration();
-            String datasetBucket = bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET);
-            String datasetKey = datasetConfig.getDataset().getFileName();
-
-            WekaContainerTrainMetadata containerMetadata = new WekaContainerTrainMetadata(
-                    input.getTraining().getId(),
-                    datasetConfig.getId(),
-                    input.getAlgorithmConfiguration().getId(),
-                    datasetBucket,
-                    datasetKey,
-                    datasetConfig.getTargetColumn(),
-                    datasetConfig.getBasicAttributesColumns()
+            // Build deferred input
+            DeferredCustomTrainInput input = new DeferredCustomTrainInput(
+                    tempDataset,
+                    hasFile ? request.getDatasetFile().getOriginalFilename() : null,
+                    hasFile ? request.getDatasetFile().getContentType() : null,
+                    hasFile ? request.getDatasetFile().getSize() : 0,
+                    tempParams,
+                    tempParams != null ? request.getParametersFile().getOriginalFilename() : null,
+                    request.getAlgorithmId(),
+                    request.getTrainingId(),
+                    request.getModelId(),
+                    request.getBasicAttributesColumns(),
+                    request.getTargetColumn()
             );
 
-            log.info("🚀 Submitting Weka container training [taskId={}] for user={}", taskId, username);
-            asyncManager.trainWekaContainerAsync(taskId, user.getId(), username, containerMetadata);
+            // Fire and forget - async thread will handle MinIO upload and training
+            asyncManager.setupAndTrainCustom(taskId, user.getId(), username, user, input);
 
             return taskId;
 
-        } catch (Exception e) {
-            log.error("❌ Failed to handle training [taskId={}]: {}", taskId, e.getMessage(), e);
-            taskStatusService.taskFailed(taskId, e.getMessage());
-            throw new RuntimeException("Failed to handle training [taskId=" + taskId + "]", e);
+        } catch (IOException e) {
+            log.error("❌ Failed to create temp files for task [{}]: {}", taskId, e.getMessage(), e);
+            taskStatusService.taskFailed(taskId, "Failed to process uploaded files: " + e.getMessage());
+            throw new RuntimeException("Failed to process uploaded files", e);
         }
+    }
+
+    /**
+     * Handles Weka (predefined algorithm) training requests.
+     * Returns taskId immediately after validation; MinIO upload and entity creation happen async.
+     */
+    public String handleTrainingRequest(@Valid TrainingStartRequest request, User user) {
+        String username = user.getUsername();
+
+        // ========== INIT TASK + SAVE TO TEMP + ASYNC (non-blocking) ==========
+
+        String taskId = taskStatusService.initTask(TaskTypeEnum.TRAINING, username);
+        log.info("📋 Task initialized [taskId={}] for Weka training", taskId);
+
+        try {
+            // Copy file to temp (fast local disk operation)
+            Path tempDataset = copyToTemp(request.getFile());
+
+            // Build deferred input from request fields
+            DeferredWekaTrainInput input = new DeferredWekaTrainInput(
+                    tempDataset,
+                    tempDataset != null ? request.getFile().getOriginalFilename() : null,
+                    tempDataset != null ? request.getFile().getContentType() : null,
+                    tempDataset != null ? request.getFile().getSize() : 0,
+                    request.getAlgorithmId(),
+                    request.getAlgorithmConfigurationId(),
+                    request.getDatasetId(),
+                    request.getDatasetConfigurationId(),
+                    request.getBasicCharacteristicsColumns(),
+                    request.getTargetClassColumn(),
+                    request.getOptions(),
+                    request.getTrainingId(),
+                    request.getModelId()
+            );
+
+            // Fire and forget - async thread will handle MinIO upload, entity creation, and training
+            asyncManager.setupAndTrainWeka(taskId, user.getId(), username, user, input);
+
+            return taskId;
+
+        } catch (IOException e) {
+            log.error("❌ Failed to create temp files for task [{}]: {}", taskId, e.getMessage(), e);
+            taskStatusService.taskFailed(taskId, "Failed to process uploaded files: " + e.getMessage());
+            throw new RuntimeException("Failed to process uploaded files", e);
+        }
+    }
+
+    /**
+     * Copies a MultipartFile to a temp file on local disk.
+     * This is a fast operation compared to MinIO upload.
+     */
+    private Path copyToTemp(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            return null;
+        }
+        Path temp = Files.createTempFile("upload-", "-" + file.getOriginalFilename());
+        file.transferTo(temp.toFile());
+        log.debug("📁 Copied {} to temp: {}", file.getOriginalFilename(), temp);
+        return temp;
     }
 }

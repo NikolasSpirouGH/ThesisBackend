@@ -1,40 +1,43 @@
 package com.cloud_ml_app_thesis.util.orchestrator;
 
-import java.time.ZonedDateTime;
-import java.util.UUID;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-import org.hibernate.Hibernate;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Component;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.cloud_ml_app_thesis.dto.request.execution.ExecuteRequest;
-import com.cloud_ml_app_thesis.entity.AsyncTaskStatus;
+import com.cloud_ml_app_thesis.dto.train.DeferredPredictionInput;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.enumeration.accessibility.ModelAccessibilityEnum;
-import com.cloud_ml_app_thesis.enumeration.status.TaskStatusEnum;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
-import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
-import com.cloud_ml_app_thesis.service.DatasetService;
+import com.cloud_ml_app_thesis.service.TaskStatusService;
 import com.cloud_ml_app_thesis.util.AsyncManager;
 
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class PredictionOrchestrator {
 
-    private final DatasetService datasetService;
-    private final TaskStatusRepository taskStatusRepository;
+    private final TaskStatusService taskStatusService;
     private final AsyncManager asyncManager;
     private final ModelRepository modelRepository;
 
+    /**
+     * Handles prediction requests.
+     * Returns taskId immediately after validation; MinIO upload and prediction happen async.
+     */
     public String handlePrediction(ExecuteRequest request, User user) {
+
+        // ========== VALIDATION (synchronous - throws immediately on error) ==========
 
         // Use eager fetch query to load all relationships upfront without transaction
         Model model = modelRepository.findByIdWithTrainingDetails(request.getModelId())
@@ -45,29 +48,47 @@ public class PredictionOrchestrator {
             throw new AuthorizationDeniedException("You are not authorized to access this model");
         }
 
-        String taskId = UUID.randomUUID().toString();
+        // ========== INIT TASK + SAVE TO TEMP + ASYNC (non-blocking) ==========
 
-        String datasetKey = datasetService.uploadPredictionFile(request.getPredictionFile(), user);
+        String taskId = taskStatusService.initTask(TaskTypeEnum.PREDICTION, user.getUsername());
+        log.info("📋 Task initialized [taskId={}] for prediction with modelId={}", taskId, request.getModelId());
 
-        log.info("Upload prediction file: {}", datasetKey);
-        AsyncTaskStatus task = AsyncTaskStatus.builder()
-                .taskId(taskId)
-                .taskType(TaskTypeEnum.PREDICTION)
-                .status(TaskStatusEnum.PENDING)
-                .startedAt(ZonedDateTime.now())
-                .username(user.getUsername())
-                .build();
-        taskStatusRepository.save(task);
+        try {
+            // Copy file to temp (fast local disk operation)
+            Path tempPrediction = copyToTemp(request.getPredictionFile());
 
-        switch (model.getModelType().getName()) {
-            case CUSTOM -> asyncManager.predictCustom(taskId, request.getModelId(), datasetKey, user);
-            case PREDEFINED -> {
-                // Use containerized Weka prediction (Kubernetes job)
-                asyncManager.predictWekaContainer(taskId, request.getModelId(), datasetKey, user);
-            }
-            default -> throw new IllegalArgumentException("Unsupported algorithm type: " + model.getModelType().getName());
+            // Build deferred input
+            DeferredPredictionInput input = new DeferredPredictionInput(
+                    tempPrediction,
+                    request.getPredictionFile().getOriginalFilename(),
+                    request.getPredictionFile().getContentType(),
+                    request.getPredictionFile().getSize(),
+                    request.getModelId()
+            );
+
+            // Fire and forget - async thread will handle MinIO upload and prediction
+            asyncManager.setupAndPredict(taskId, user, input);
+
+            return taskId;
+
+        } catch (IOException e) {
+            log.error("❌ Failed to create temp files for task [{}]: {}", taskId, e.getMessage(), e);
+            taskStatusService.taskFailed(taskId, "Failed to process uploaded files: " + e.getMessage());
+            throw new RuntimeException("Failed to process uploaded files", e);
         }
+    }
 
-        return taskId;
+    /**
+     * Copies a MultipartFile to a temp file on local disk.
+     * This is a fast operation compared to MinIO upload.
+     */
+    private Path copyToTemp(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            return null;
+        }
+        Path temp = Files.createTempFile("upload-", "-" + file.getOriginalFilename());
+        file.transferTo(temp.toFile());
+        log.debug("📁 Copied {} to temp: {}", file.getOriginalFilename(), temp);
+        return temp;
     }
 }
