@@ -347,6 +347,161 @@ public class KubernetesJobRunner implements ContainerRunner {
         waitForJobCompletion(jobName, Duration.ofMinutes(10));
     }
 
+    @Override
+    public void runGenericTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir) {
+        runGenericTrainingContainer(imageName, containerDataDir, containerModelDir, null);
+    }
+
+    @Override
+    public void runGenericTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        log.info("Starting Kubernetes BYOC training job with image={}", imageName);
+
+        Path expectedDataset = containerDataDir.resolve("dataset.csv");
+        if (!Files.exists(expectedDataset)) {
+            throw new IllegalStateException("Missing dataset.csv at: " + expectedDataset);
+        }
+
+        if (!Files.exists(containerModelDir)) {
+            throw new IllegalStateException("Output directory (modelDir) does not exist: " + containerModelDir);
+        }
+
+        Path relativeData = sharedRoot.relativize(containerDataDir.toAbsolutePath().normalize());
+        Path relativeModel = sharedRoot.relativize(containerModelDir.toAbsolutePath().normalize());
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        String jobName = "byoc-training-" + System.currentTimeMillis();
+
+        if (jobNameCallback != null) {
+            jobNameCallback.accept(jobName);
+        }
+
+        // KEY DIFFERENCE: No .withCommand() - container uses its own ENTRYPOINT/CMD
+        Job job = new JobBuilder()
+                .withNewMetadata()
+                    .withName(jobName)
+                    .withNamespace(namespace)
+                    .withLabels(Collections.singletonMap("app", "byoc-training"))
+                .endMetadata()
+                .withNewSpec()
+                    .withBackoffLimit(0)
+                    .withTtlSecondsAfterFinished(300)
+                    .withNewTemplate()
+                        .withNewMetadata()
+                            .withLabels(Collections.singletonMap("job-name", jobName))
+                        .endMetadata()
+                        .withNewSpec()
+                            .addNewContainer()
+                                .withName("byoc-trainer")
+                                .withImage(imageName)
+                                .withImagePullPolicy("IfNotPresent")
+                                // No .withCommand() - uses image ENTRYPOINT
+                                .withEnv(
+                                    new EnvVar("DATA_DIR", dataPath, null),
+                                    new EnvVar("MODEL_DIR", modelPath, null),
+                                    new EnvVar("EXECUTION_MODE", "train", null)
+                                )
+                                .withVolumeMounts(new VolumeMountBuilder()
+                                        .withName("shared-storage")
+                                        .withMountPath("/shared")
+                                        .build())
+                                .withNewResources()
+                                    .withRequests(Collections.singletonMap("memory", new Quantity("1Gi")))
+                                    .withLimits(Collections.singletonMap("memory", new Quantity("2Gi")))
+                                .endResources()
+                            .endContainer()
+                            .withRestartPolicy("Never")
+                            .addNewVolume()
+                                .withName("shared-storage")
+                                .withNewPersistentVolumeClaim()
+                                    .withClaimName(pvcName)
+                                .endPersistentVolumeClaim()
+                            .endVolume()
+                        .endSpec()
+                    .endTemplate()
+                .endSpec()
+                .build();
+
+        log.info("Creating Kubernetes BYOC Training Job: {}", jobName);
+        kubernetesClient.batch().v1().jobs().inNamespace(namespace).create(job);
+
+        waitForJobCompletion(jobName, Duration.ofMinutes(30));
+    }
+
+    @Override
+    public void runGenericPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir) {
+        runGenericPredictionContainer(imageName, containerDataDir, containerModelDir, null);
+    }
+
+    @Override
+    public void runGenericPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        log.info("Starting Kubernetes BYOC prediction job with image={}", imageName);
+
+        Path relativeData = sharedRoot.relativize(containerDataDir.toAbsolutePath().normalize());
+        Path relativeModel = sharedRoot.relativize(containerModelDir.toAbsolutePath().normalize());
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        String jobName = "byoc-prediction-" + System.currentTimeMillis();
+
+        if (jobNameCallback != null) {
+            jobNameCallback.accept(jobName);
+        }
+
+        // KEY DIFFERENCE: No .withCommand() - container uses its own ENTRYPOINT/CMD
+        Job job = new JobBuilder()
+                .withNewMetadata()
+                    .withName(jobName)
+                    .withNamespace(namespace)
+                    .withLabels(Collections.singletonMap("app", "byoc-prediction"))
+                .endMetadata()
+                .withNewSpec()
+                    .withBackoffLimit(0)
+                    .withTtlSecondsAfterFinished(300)
+                    .withNewTemplate()
+                        .withNewMetadata()
+                            .withLabels(Collections.singletonMap("job-name", jobName))
+                        .endMetadata()
+                        .withNewSpec()
+                            .addNewContainer()
+                                .withName("byoc-predictor")
+                                .withImage(imageName)
+                                .withImagePullPolicy("IfNotPresent")
+                                // No .withCommand() - uses image ENTRYPOINT
+                                .withEnv(
+                                    new EnvVar("DATA_DIR", dataPath, null),
+                                    new EnvVar("MODEL_DIR", modelPath, null),
+                                    new EnvVar("EXECUTION_MODE", "predict", null)
+                                )
+                                .withVolumeMounts(new VolumeMountBuilder()
+                                        .withName("shared-storage")
+                                        .withMountPath("/shared")
+                                        .build())
+                                .withNewResources()
+                                    .withRequests(Collections.singletonMap("memory", new Quantity("1Gi")))
+                                    .withLimits(Collections.singletonMap("memory", new Quantity("2Gi")))
+                                .endResources()
+                            .endContainer()
+                            .withRestartPolicy("Never")
+                            .addNewVolume()
+                                .withName("shared-storage")
+                                .withNewPersistentVolumeClaim()
+                                    .withClaimName(pvcName)
+                                .endPersistentVolumeClaim()
+                            .endVolume()
+                        .endSpec()
+                    .endTemplate()
+                .endSpec()
+                .build();
+
+        log.info("Creating Kubernetes BYOC Prediction Job: {}", jobName);
+        kubernetesClient.batch().v1().jobs().inNamespace(namespace).create(job);
+
+        waitForJobCompletion(jobName, Duration.ofMinutes(10));
+    }
+
     private void waitForJobCompletion(String jobName, Duration timeout) {
         log.info("⌛ Waiting for job {} to complete...", jobName);
 

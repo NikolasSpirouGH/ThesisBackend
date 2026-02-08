@@ -1,6 +1,7 @@
 package com.cloud_ml_app_thesis.dto.request.custom_algorithm;
 
 import com.cloud_ml_app_thesis.dto.custom_algorithm.AlgorithmParameterDTO;
+import com.cloud_ml_app_thesis.enumeration.ExecutionMode;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
@@ -51,5 +52,10 @@ public class CustomAlgorithmCreateRequest {
 
     @Schema(description = "Alternative Docker Hub URL if TAR is not provided", example = "docker.io/user/image:tag")
     private String dockerHubUrl;
+
+    @Schema(description = "Execution mode: PYTHON_TEMPLATE (platform injects train.py/predict.py) or GENERIC_BYOC (container uses its own ENTRYPOINT)",
+            example = "PYTHON_TEMPLATE")
+    @Builder.Default
+    private ExecutionMode executionMode = ExecutionMode.PYTHON_TEMPLATE;
 
 }

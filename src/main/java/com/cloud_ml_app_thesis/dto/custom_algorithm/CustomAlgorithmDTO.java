@@ -23,4 +23,5 @@ public class CustomAlgorithmDTO {
     private boolean isOwner;
     private List<String> keywords;
     private String createdAt;
+    private String executionMode;
 }

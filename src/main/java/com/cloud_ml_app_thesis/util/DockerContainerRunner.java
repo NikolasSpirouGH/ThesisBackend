@@ -193,6 +193,130 @@ public class DockerContainerRunner implements ContainerRunner {
     }
 
     @Override
+    public void runGenericTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir) {
+        log.info("Starting BYOC training container using image='{}'", imageName);
+
+        Path expectedDataset = containerDataDir.resolve("dataset.csv");
+        if (!Files.exists(expectedDataset)) {
+            throw new IllegalStateException("Missing dataset.csv at: " + expectedDataset);
+        }
+
+        if (!Files.exists(containerModelDir)) {
+            throw new IllegalStateException("Output directory (modelDir) does not exist: " + containerModelDir);
+        }
+
+        String sharedVolumeName = resolveSharedVolumeName();
+        Path sharedRoot = resolveSharedRoot();
+
+        Path relativeData = relativizeWithinShared(sharedRoot, containerDataDir);
+        Path relativeModel = relativizeWithinShared(sharedRoot, containerModelDir);
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        log.info("Mounting shared volume '{}' at /shared", sharedVolumeName);
+        HostConfig hostConfig = HostConfig.newHostConfig()
+                .withBinds(new Bind(sharedVolumeName, new Volume("/shared")));
+
+        // KEY DIFFERENCE: No .withCmd() - container uses its own ENTRYPOINT/CMD
+        CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
+                .withHostConfig(hostConfig)
+                .withEnv(
+                        "DATA_DIR=" + dataPath,
+                        "MODEL_DIR=" + modelPath,
+                        "EXECUTION_MODE=train"
+                )
+                .exec();
+
+        String containerId = container.getId();
+        log.info("BYOC training container created: ID={}", containerId);
+
+        dockerClient.startContainerCmd(containerId).exec();
+        log.info("BYOC training container started: ID={}", containerId);
+
+        try {
+            dockerClient.logContainerCmd(containerId)
+                    .withStdOut(true)
+                    .withStdErr(true)
+                    .withFollowStream(true)
+                    .exec(new LogContainerResultCallback() {
+                        @Override
+                        public void onNext(Frame frame) {
+                            String logLine = new String(frame.getPayload()).trim();
+                            if (!logLine.isBlank()) {
+                                log.info("[BYOC CONTAINER LOG] {}", logLine);
+                            }
+                            super.onNext(frame);
+                        }
+                    }).awaitCompletion(30, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            log.error("Interrupted while waiting for BYOC container logs", e);
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while waiting for BYOC container logs", e);
+        }
+
+        log.info("Waiting for BYOC training container to finish...");
+        Integer exitCode = dockerClient.waitContainerCmd(containerId).start().awaitStatusCode();
+
+        if (exitCode != 0) {
+            log.error("BYOC training container exited with non-zero code: {}", exitCode);
+            throw new RuntimeException("BYOC training container failed (exitCode=" + exitCode + ")");
+        }
+
+        log.info("BYOC training container finished successfully (exitCode=0)");
+    }
+
+    @Override
+    public void runGenericPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir) {
+        log.info("Starting BYOC prediction container with image={}", imageName);
+
+        String sharedVolumeName = resolveSharedVolumeName();
+        Path sharedRoot = resolveSharedRoot();
+
+        Path relativeData = relativizeWithinShared(sharedRoot, containerDataDir);
+        Path relativeModel = relativizeWithinShared(sharedRoot, containerModelDir);
+
+        String dataPath = "/shared/" + relativeData.toString().replace('\\', '/');
+        String modelPath = "/shared/" + relativeModel.toString().replace('\\', '/');
+
+        HostConfig hostConfig = HostConfig.newHostConfig()
+                .withBinds(new Bind(sharedVolumeName, new Volume("/shared")));
+
+        // KEY DIFFERENCE: No .withCmd() - container uses its own ENTRYPOINT/CMD
+        CreateContainerResponse container = dockerClient.createContainerCmd(imageName)
+                .withHostConfig(hostConfig)
+                .withEnv("DATA_DIR=" + dataPath, "MODEL_DIR=" + modelPath, "EXECUTION_MODE=predict")
+                .exec();
+
+        String containerId = container.getId();
+        dockerClient.startContainerCmd(containerId).exec();
+
+        log.info("BYOC prediction container started (id={})", containerId);
+
+        try {
+            dockerClient.logContainerCmd(containerId)
+                    .withStdOut(true).withStdErr(true).withFollowStream(true)
+                    .exec(new LogContainerResultCallback() {
+                        @Override
+                        public void onNext(Frame frame) {
+                            log.info("[BYOC CONTAINER LOG] {}", new String(frame.getPayload()).trim());
+                            super.onNext(frame);
+                        }
+                    }).awaitCompletion(30, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            throw new RuntimeException("Interrupted while waiting for BYOC prediction logs", e);
+        }
+
+        int exitCode = dockerClient.waitContainerCmd(containerId).start().awaitStatusCode();
+        if (exitCode != 0) {
+            log.error("BYOC prediction container exited with error code {}", exitCode);
+            throw new RuntimeException("BYOC prediction container failed (exitCode=" + exitCode + ")");
+        }
+
+        log.info("BYOC prediction container finished successfully");
+    }
+
+    @Override
     public void runWekaTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir) {
         log.info("🐳 Starting WEKA training container using image='{}'", imageName);
 

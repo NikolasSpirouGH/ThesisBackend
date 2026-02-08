@@ -17,6 +17,8 @@ import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelExecutionRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.ModelExecutionStatusRepository;
+import com.cloud_ml_app_thesis.strategy.CustomExecutionStrategy;
+import com.cloud_ml_app_thesis.strategy.ExecutionStrategyResolver;
 import com.cloud_ml_app_thesis.util.ContainerRunner;
 import com.cloud_ml_app_thesis.util.FileUtil;
 import jakarta.persistence.EntityManager;
@@ -56,6 +58,7 @@ public class CustomModelExecutionService {
     private final ModelExecutionRepository modelExecutionRepository;
     private final ModelService modelService;
     private final ContainerRunner containerRunner;
+    private final ExecutionStrategyResolver executionStrategyResolver;
     private final TaskStatusService taskStatusService;
     private final EntityManager entityManager;
     private final TransactionTemplate transactionTemplate;
@@ -116,94 +119,60 @@ public class CustomModelExecutionService {
             Files.createDirectories(dataDir);
             Files.createDirectories(outputDir);
 
-            // 3. Κατέβασμα dataset και αντιγραφή σε /data
+            // 3. Download dataset to temp file
             Path datasetPath = minioService.downloadObjectToTempFile(inputBucket, datasetKey);
-            Path datasetInside = dataDir.resolve("predict.csv");
-            Files.copy(datasetPath, datasetInside, StandardCopyOption.REPLACE_EXISTING);
-            log.info("📥 Prediction dataset copied to /data: {}", datasetInside);
+            Path testDataPath = dataDir.resolve("test_data.csv");
+            Files.copy(datasetPath, testDataPath, StandardCopyOption.REPLACE_EXISTING);
+            log.info("Prediction dataset copied to {}", testDataPath);
 
             // 4. Download model and artifacts from MinIO
-            // Models are stored in folder structure: username_timestamp/filename
-            // extractMinioKey() gets the full path including folder (e.g., "bigspy_08012026202238/trained_model.pkl")
             String modelKey = minioService.extractMinioKey(model.getModelUrl());
             Path modelPath = minioService.downloadObjectToTempFile(modelBucket, modelKey);
-            Path modelInside = outputDir.resolve("trained_model.pkl");
-            Files.copy(modelPath, modelInside, StandardCopyOption.REPLACE_EXISTING);
-            log.info("📥 Trained model copied from {}/{} to {}", modelBucket, modelKey, modelInside);
+            log.info("Trained model downloaded from {}/{}", modelBucket, modelKey);
 
-            // Download optional JSON artifacts (label_mapping.json, feature_columns.json) from same folder
+            // Download optional JSON artifacts
+            Path labelMappingPath = null;
             if (model.getLabelMappingUrl() != null && !model.getLabelMappingUrl().isBlank()) {
                 try {
                     String labelMappingKey = minioService.extractMinioKey(model.getLabelMappingUrl());
-                    Path labelMappingPath = minioService.downloadObjectToTempFile(modelBucket, labelMappingKey);
-                    Path labelMappingInside = outputDir.resolve("label_mapping.json");
-                    Files.copy(labelMappingPath, labelMappingInside, StandardCopyOption.REPLACE_EXISTING);
-                    log.info("📥 Label mapping copied from {}/{} to {}", modelBucket, labelMappingKey, labelMappingInside);
+                    labelMappingPath = minioService.downloadObjectToTempFile(modelBucket, labelMappingKey);
+                    log.info("Label mapping downloaded from {}/{}", modelBucket, labelMappingKey);
                 } catch (Exception e) {
-                    log.warn("⚠️ Could not download label_mapping.json: {}", e.getMessage());
+                    log.warn("Could not download label_mapping.json: {}", e.getMessage());
                 }
-            } else {
-                log.info("ℹ️ No label mapping file for this model (purely numeric target)");
             }
 
+            Path featureColumnsPath = null;
             if (model.getFeatureColumnsUrl() != null && !model.getFeatureColumnsUrl().isBlank()) {
                 try {
                     String featureColumnsKey = minioService.extractMinioKey(model.getFeatureColumnsUrl());
-                    Path featureColumnsPath = minioService.downloadObjectToTempFile(modelBucket, featureColumnsKey);
-                    Path featureColumnsInside = outputDir.resolve("feature_columns.json");
-                    Files.copy(featureColumnsPath, featureColumnsInside, StandardCopyOption.REPLACE_EXISTING);
-                    log.info("📥 Feature columns copied from {}/{} to {}", modelBucket, featureColumnsKey, featureColumnsInside);
+                    featureColumnsPath = minioService.downloadObjectToTempFile(modelBucket, featureColumnsKey);
+                    log.info("Feature columns downloaded from {}/{}", modelBucket, featureColumnsKey);
                 } catch (Exception e) {
-                    log.warn("⚠️ Could not download feature_columns.json: {}", e.getMessage());
+                    log.warn("Could not download feature_columns.json: {}", e.getMessage());
                 }
-            } else {
-                log.info("ℹ️ No feature columns file for this model (purely numeric features)");
             }
 
-            // Copy standardized predict.py template to data directory
-            try (InputStream predictTemplate = getClass().getResourceAsStream("/templates/predict.py")) {
-                if (predictTemplate == null) {
-                    throw new IllegalStateException("❌ predict.py template not found in resources");
-                }
-                Path predictPyPath = dataDir.resolve("predict.py");
-                Files.copy(predictTemplate, predictPyPath, StandardCopyOption.REPLACE_EXISTING);
-                log.info("✅ Copied standardized predict.py template to {}", predictPyPath);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to copy predict.py template", e);
-            }
-
-            // Rename prediction dataset to expected name
-            Path testDataPath = dataDir.resolve("test_data.csv");
-            Files.move(datasetInside, testDataPath, StandardCopyOption.REPLACE_EXISTING);
-            log.info("📥 Renamed prediction dataset to test_data.csv");
-
-            // 5. Extract algorithm.py from Docker image for prediction
+            // 5. Resolve execution strategy and prepare prediction data
             CustomAlgorithm algorithm = model.getTraining().getCustomAlgorithmConfiguration().getAlgorithm();
             CustomAlgorithmImage activeImage = algorithm.getImages().stream()
                     .filter(CustomAlgorithmImage::isActive)
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException("No active image found"));
 
-            // Extract algorithm.py from the user's Docker image to /data directory
-            try {
-                containerRunner.copyFileFromImage(activeImage.getName(), "/app/algorithm.py", dataDir.resolve("algorithm.py"));
-                log.info("✅ Extracted algorithm.py from Docker image for prediction");
-            } catch (Exception e) {
-                log.error("❌ Failed to extract algorithm.py for prediction: {}", e.getMessage());
-                throw new RuntimeException("Could not extract algorithm.py for prediction", e);
-            }
+            CustomExecutionStrategy executionStrategy = executionStrategyResolver.resolve(algorithm.getExecutionMode());
+            log.info("Using execution strategy: {} for prediction", algorithm.getExecutionMode());
 
-            // Run prediction container with callback to store jobName for cancellation support
-            containerRunner.runPredictionContainer(activeImage.getName(), dataDir, outputDir,
+            // Delegate strategy-specific preparation (Python template injects predict.py + algorithm.py; BYOC copies model as-is)
+            executionStrategy.preparePredictionData(activeImage.getName(), dataDir, outputDir,
+                    modelPath, labelMappingPath, featureColumnsPath, testDataPath);
+
+            // Run prediction container via strategy
+            executionStrategy.executePrediction(activeImage.getName(), dataDir, outputDir,
                     jobName -> taskStatusService.updateJobName(taskId, jobName));
 
-            // 6. Βρες output αρχείο
-            File predictedFile = Files.walk(outputDir)
-                    .filter(Files::isRegularFile)
-                    .filter(p -> p.toString().endsWith(".csv") || p.toString().endsWith(".arff"))
-                    .map(Path::toFile)
-                    .findFirst()
-                    .orElseThrow(() -> new FileProcessingException("No valid .csv or .arff output found", null));
+            // 6. Collect prediction results via strategy
+            File predictedFile = executionStrategy.collectPredictionResults(outputDir);
 
             // Check for stop request after Docker preparation
             if (taskStatusService.stopRequested(taskId)) {

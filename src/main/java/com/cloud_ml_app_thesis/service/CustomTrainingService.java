@@ -54,6 +54,8 @@ import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.TrainingRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
+import com.cloud_ml_app_thesis.strategy.CustomExecutionStrategy;
+import com.cloud_ml_app_thesis.strategy.ExecutionStrategyResolver;
 import com.cloud_ml_app_thesis.util.ContainerRunner;
 import com.cloud_ml_app_thesis.util.FileUtil;
 import com.nimbusds.oauth2.sdk.util.StringUtils;
@@ -76,6 +78,7 @@ public class CustomTrainingService {
     private final TrainingRepository trainingRepository;
     private final ModelService modelService;
     private final ContainerRunner containerRunner;
+    private final ExecutionStrategyResolver executionStrategyResolver;
     private final TrainingStatusRepository trainingStatusRepository;
     private final TaskStatusRepository taskStatusRepository;
     private final ModelTypeRepository modelTypeRepository;
@@ -138,6 +141,11 @@ public class CustomTrainingService {
                     .filter(CustomAlgorithmImage::isActive)
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException("No active image found"));
+
+            // Resolve execution strategy based on algorithm's execution mode
+            CustomExecutionStrategy executionStrategy = executionStrategyResolver.resolve(algorithm.getExecutionMode());
+            log.info("Using execution strategy: {} for algorithm: {}",
+                    algorithm.getExecutionMode(), algorithm.getName());
 
             TrainingStatus running = trainingStatusRepository.findByName(TrainingStatusEnum.RUNNING)
                     .orElseThrow(() -> new IllegalStateException("TrainingStatus RUNNING not found"));
@@ -311,26 +319,8 @@ public class CustomTrainingService {
                 throw new IllegalStateException("❌ dataset.csv does not exist before starting container!");
             }
 
-            // Copy standardized train.py template to data directory
-            try (InputStream trainTemplate = getClass().getResourceAsStream("/templates/train.py")) {
-                if (trainTemplate == null) {
-                    throw new IllegalStateException("❌ train.py template not found in resources");
-                }
-                Path trainPyPath = dataDir.resolve("train.py");
-                Files.copy(trainTemplate, trainPyPath, StandardCopyOption.REPLACE_EXISTING);
-                log.info("✅ Copied standardized train.py template to {}", trainPyPath);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to copy train.py template", e);
-            }
-
-            // Extract algorithm.py from the user's Docker image to /data directory
-            try {
-                containerRunner.copyFileFromImage(dockerImageTag, "/app/algorithm.py", dataDir.resolve("algorithm.py"));
-                log.info("✅ Extracted algorithm.py from Docker image to /data");
-            } catch (Exception e) {
-                log.error("❌ Failed to extract algorithm.py from Docker image: {}", e.getMessage());
-                throw new RuntimeException("Could not extract algorithm.py from user's Docker image", e);
-            }
+            // Delegate strategy-specific preparation (Python template injects train.py + algorithm.py; BYOC is no-op)
+            executionStrategy.prepareTrainingData(dockerImageTag, dataDir, outputDir);
             Thread.sleep(1000);
             log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
             log.info("✅ Copied dataset.csv");
@@ -353,43 +343,18 @@ public class CustomTrainingService {
             if (taskStatusService.stopRequested(taskId)) {
                 throw new UserInitiatedStopException("User requested stop before Docker training for task " + taskId);
             }
-            // Run training container with callback to store jobName for cancellation support
-            containerRunner.runTrainingContainer(dockerImageTag, dataDir, outputDir,
+            // Run training container via strategy (Python template overrides CMD; BYOC uses container's ENTRYPOINT)
+            executionStrategy.executeTraining(dockerImageTag, dataDir, outputDir,
                     jobName -> taskStatusService.updateJobName(taskId, jobName));
 
             log.info("Copying dataset from {} to {}", datasetPath, datasetInside);
-            log.info("✅ Copied dataset.csv");
-            // 7. Read output files
-            File modelFile = Files.walk(outputDir)
-                    .filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(".pkl"))
-                    .map(Path::toFile)
-                    .findFirst()
-                    .orElseThrow(() -> new FileProcessingException("No model file (.pkl) generated", null));
-
-            File metricsFile = Files.walk(outputDir)
-                    .filter(p -> p.getFileName().toString().equals("metrics.json"))
-                    .map(Path::toFile)
-                    .findFirst()
-                    .orElseThrow(() -> new FileProcessingException("No metrics file generated", null));
-
-            // Find optional JSON artifact files (label_mapping.json, feature_columns.json)
-            File labelMappingFile = Files.walk(outputDir)
-                    .filter(p -> p.getFileName().toString().equals("label_mapping.json"))
-                    .map(Path::toFile)
-                    .findFirst()
-                    .orElse(null);
-
-            File featureColumnsFile = Files.walk(outputDir)
-                    .filter(p -> p.getFileName().toString().equals("feature_columns.json"))
-                    .map(Path::toFile)
-                    .findFirst()
-                    .orElse(null);
-
-            log.info("✅ model: {}, metrics: {}, label_mapping: {}, feature_columns: {}",
-                    modelFile.getName(), metricsFile.getName(),
-                    labelMappingFile != null ? labelMappingFile.getName() : "none",
-                    featureColumnsFile != null ? featureColumnsFile.getName() : "none");
+            log.info("Copied dataset.csv");
+            // 7. Collect output files via strategy (Python template expects .pkl; BYOC accepts any model format)
+            CustomExecutionStrategy.TrainingResults trainingResults = executionStrategy.collectTrainingResults(outputDir);
+            File modelFile = trainingResults.modelFile();
+            File metricsFile = trainingResults.metricsFile();
+            File labelMappingFile = trainingResults.labelMappingFile();
+            File featureColumnsFile = trainingResults.featureColumnsFile();
 
             String timestamp = DateTimeFormatter.ofPattern("ddMMyyyyHHmmss").format(LocalDateTime.now());
 

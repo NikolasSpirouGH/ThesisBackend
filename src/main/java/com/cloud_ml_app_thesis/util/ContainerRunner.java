@@ -36,6 +36,32 @@ public interface ContainerRunner {
     }
 
     /**
+     * Run a BYOC training container using the container's own ENTRYPOINT/CMD.
+     * No command override - the platform only provides DATA_DIR, MODEL_DIR, and EXECUTION_MODE env vars.
+     */
+    void runGenericTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir);
+
+    /**
+     * Run a BYOC training container with job name callback for cancellation support.
+     */
+    default void runGenericTrainingContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        runGenericTrainingContainer(imageName, containerDataDir, containerModelDir);
+    }
+
+    /**
+     * Run a BYOC prediction container using the container's own ENTRYPOINT/CMD.
+     * No command override - the platform only provides DATA_DIR, MODEL_DIR, and EXECUTION_MODE env vars.
+     */
+    void runGenericPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir);
+
+    /**
+     * Run a BYOC prediction container with job name callback for cancellation support.
+     */
+    default void runGenericPredictionContainer(String imageName, Path containerDataDir, Path containerModelDir, Consumer<String> jobNameCallback) {
+        runGenericPredictionContainer(imageName, containerDataDir, containerModelDir);
+    }
+
+    /**
      * Run a Weka training container (Java-based predefined algorithms)
      * Uses: java -jar weka-runner.jar train
      */

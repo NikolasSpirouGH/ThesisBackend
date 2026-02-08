@@ -10,6 +10,7 @@ import com.cloud_ml_app_thesis.dto.request.model.ModelSearchRequest;
 import com.cloud_ml_app_thesis.entity.*;
 import com.cloud_ml_app_thesis.entity.accessibility.CustomAlgorithmAccessibility;
 import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
+import com.cloud_ml_app_thesis.enumeration.ExecutionMode;
 import com.cloud_ml_app_thesis.exception.BadRequestException;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.AlgorithmImageRepository;
@@ -96,6 +97,7 @@ public class CustomAlgorithmService {
             .isOwner(isOwner)
             .keywords(algorithm.getKeywords())
             .createdAt(algorithm.getCreatedAt().toString())
+            .executionMode(algorithm.getExecutionMode().name())
             .build();
     }
 
@@ -116,6 +118,8 @@ public class CustomAlgorithmService {
         algorithm.setKeywords(request.getKeywords());
         algorithm.setCreatedAt(LocalDateTime.now());
         algorithm.setOwner(user);
+        algorithm.setExecutionMode(
+                request.getExecutionMode() != null ? request.getExecutionMode() : ExecutionMode.PYTHON_TEMPLATE);
 
         customAlgorithmRepository.save(algorithm);
 
@@ -337,6 +341,11 @@ public class CustomAlgorithmService {
                 .findByName(request.getAccessibility())
                 .orElseThrow(() -> new EntityNotFoundException("Invalid accessibility: " + request.getAccessibility()));
             algorithm.setAccessibility(accessibility);
+        }
+
+        // Update execution mode if provided
+        if (request.getExecutionMode() != null) {
+            algorithm.setExecutionMode(request.getExecutionMode());
         }
 
         // Update active image version if provided

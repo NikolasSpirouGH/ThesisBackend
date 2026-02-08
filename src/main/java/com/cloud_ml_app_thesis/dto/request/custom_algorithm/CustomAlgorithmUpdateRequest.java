@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.dto.request.custom_algorithm;
 
+import com.cloud_ml_app_thesis.enumeration.ExecutionMode;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -25,4 +26,6 @@ public class CustomAlgorithmUpdateRequest {
     private AlgorithmAccessibiltyEnum accessibility;
 
     private List<String> keywords;
+
+    private ExecutionMode executionMode;
 }

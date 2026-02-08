@@ -1,6 +1,7 @@
 package com.cloud_ml_app_thesis.entity;
 
 import com.cloud_ml_app_thesis.entity.accessibility.CustomAlgorithmAccessibility;
+import com.cloud_ml_app_thesis.enumeration.ExecutionMode;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
@@ -41,6 +42,11 @@ public class CustomAlgorithm {
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_mode", nullable = false)
+    @Builder.Default
+    private ExecutionMode executionMode = ExecutionMode.PYTHON_TEMPLATE;
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
