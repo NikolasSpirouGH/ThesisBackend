@@ -6,10 +6,7 @@ import com.cloud_ml_app_thesis.enumeration.BucketTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.DatasetFunctionalTypeEnum;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.exception.MinioFileUploadException;
-import io.minio.GetObjectArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.RemoveObjectArgs;
+import io.minio.*;
 import io.minio.errors.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -201,6 +198,72 @@ public class MinioService {
             }
         } catch (java.net.MalformedURLException e) {
             throw new RuntimeException("Failed to extract key from MinIO URL: " + minioUrl, e);
+        }
+    }
+
+    /**
+     * Server-side copy of an object within MinIO.
+     * This performs the copy on the server side without downloading/uploading through the application.
+     *
+     * @param sourceBucket source bucket name
+     * @param sourceKey    source object key
+     * @param targetBucket target bucket name
+     * @param targetKey    target object key
+     * @return the new object key
+     */
+    public String copyObject(String sourceBucket, String sourceKey,
+                             String targetBucket, String targetKey) {
+        if (!isKnownBucket(sourceBucket)) {
+            throw new IllegalArgumentException("Invalid source bucket name: " + sourceBucket);
+        }
+        if (!isKnownBucket(targetBucket)) {
+            throw new IllegalArgumentException("Invalid target bucket name: " + targetBucket);
+        }
+
+        try {
+            minioClient.copyObject(
+                    CopyObjectArgs.builder()
+                            .bucket(targetBucket)
+                            .object(targetKey)
+                            .source(CopySource.builder()
+                                    .bucket(sourceBucket)
+                                    .object(sourceKey)
+                                    .build())
+                            .build()
+            );
+            log.info("Copied object from [{}/{}] to [{}/{}]",
+                    sourceBucket, sourceKey, targetBucket, targetKey);
+            return targetKey;
+        } catch (Exception e) {
+            log.error("Failed to copy object from [{}/{}] to [{}/{}]: {}",
+                    sourceBucket, sourceKey, targetBucket, targetKey, e.getMessage());
+            throw new FileProcessingException("MinIO copy failed", e);
+        }
+    }
+
+    /**
+     * Check if an object exists in the bucket.
+     *
+     * @param bucketName bucket name
+     * @param objectKey  object key
+     * @return true if object exists, false otherwise
+     */
+    public boolean objectExists(String bucketName, String objectKey) {
+        try {
+            minioClient.statObject(
+                    StatObjectArgs.builder()
+                            .bucket(bucketName)
+                            .object(objectKey)
+                            .build()
+            );
+            return true;
+        } catch (ErrorResponseException e) {
+            if ("NoSuchKey".equals(e.errorResponse().code())) {
+                return false;
+            }
+            throw new RuntimeException("Failed to check object existence", e);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to check object existence", e);
         }
     }
 

@@ -4,4 +4,6 @@ public enum DatasetShareActionTypeEnum {
     SHARE,
     REMOVE,
     DECLINED,
+    GROUP_SHARE,
+    GROUP_UNSHARE
 }

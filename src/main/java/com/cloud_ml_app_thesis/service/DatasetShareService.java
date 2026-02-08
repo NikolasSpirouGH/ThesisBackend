@@ -3,18 +3,22 @@ package com.cloud_ml_app_thesis.service;
 import com.cloud_ml_app_thesis.entity.action.DatasetShareActionType;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.User;
+import com.cloud_ml_app_thesis.entity.dataset.DatasetGroupShare;
 import com.cloud_ml_app_thesis.entity.dataset.DatasetShare;
 import com.cloud_ml_app_thesis.entity.dataset.DatasetCopy;
 import com.cloud_ml_app_thesis.entity.dataset.DatasetShareHistory;
+import com.cloud_ml_app_thesis.entity.group.Group;
 import com.cloud_ml_app_thesis.enumeration.UserRoleEnum;
 import com.cloud_ml_app_thesis.enumeration.action.DatasetShareActionTypeEnum;
 import com.cloud_ml_app_thesis.helper.AuthorizationHelper;
 import com.cloud_ml_app_thesis.repository.action.DatasetSareActionTypeRepository;
+import com.cloud_ml_app_thesis.repository.dataset.DatasetGroupShareRepository;
 import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.repository.dataset.DatasetShareHistoryRepository;
 import com.cloud_ml_app_thesis.repository.dataset.DatasetShareRepository;
 import com.cloud_ml_app_thesis.repository.dataset.DatasetCopyRepository;
 import com.cloud_ml_app_thesis.repository.UserRepository;
+import com.cloud_ml_app_thesis.repository.group.GroupRepository;
 import com.cloud_ml_app_thesis.util.SecurityUtils;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
@@ -40,6 +44,8 @@ public class DatasetShareService {
     private final DatasetShareHistoryRepository datasetShareHistoryRepository;
     private final DatasetCopyRepository datasetCopyRepository;
     private final DatasetSareActionTypeRepository datasetSareActionTypeRepository;
+    private final DatasetGroupShareRepository datasetGroupShareRepository;
+    private final GroupRepository groupRepository;
     private final AuthorizationHelper authorizationHelper;
     /**
      * Share a dataset with a group of users
@@ -238,5 +244,127 @@ public class DatasetShareService {
 
         datasetShareHistoryRepository.save(new DatasetShareHistory(null, dataset, sharedWithUser, actionUser, ZonedDateTime.now(ZoneId.of("Europe/Athens")), declineAction, comments));
 
+    }
+
+    /**
+     * Share a dataset with a group (all members get access).
+     */
+    @Transactional
+    public void shareDatasetWithGroup(Integer datasetId, Integer groupId, String sharedByUsername, String comment) {
+        Dataset dataset = datasetRepository.findById(datasetId)
+                .orElseThrow(() -> new EntityNotFoundException("Dataset not found"));
+
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new EntityNotFoundException("Group not found"));
+
+        User sharedByUser = userRepository.findByUsername(sharedByUsername)
+                .orElseThrow(() -> new EntityNotFoundException("Sharing user not found"));
+
+        // Check if already shared with this group
+        if (datasetGroupShareRepository.existsByDatasetAndGroup(dataset, group)) {
+            throw new IllegalStateException("Dataset is already shared with this group");
+        }
+
+        // Validate that the sharer is the owner or has permission
+        boolean isOwner = dataset.getUser().getUsername().equalsIgnoreCase(sharedByUsername);
+        boolean isPrivileged = hasAnyRole(sharedByUser, UserRoleEnum.ADMIN.toString(), UserRoleEnum.DATASET_MANAGER.toString());
+
+        if (!isOwner && !isPrivileged) {
+            throw new AccessDeniedException("Only the dataset owner or privileged users can share datasets");
+        }
+
+        DatasetGroupShare groupShare = new DatasetGroupShare();
+        groupShare.setDataset(dataset);
+        groupShare.setGroup(group);
+        groupShare.setSharedByUser(sharedByUser);
+        groupShare.setSharedAt(ZonedDateTime.now(ZoneId.of("Europe/Athens")));
+        groupShare.setComment(comment);
+
+        datasetGroupShareRepository.save(groupShare);
+
+        // Record in history
+        DatasetShareActionType groupShareAction = datasetSareActionTypeRepository.findByName(DatasetShareActionTypeEnum.GROUP_SHARE)
+                .orElseThrow(() -> new EntityNotFoundException("GROUP_SHARE action type not found"));
+
+        // Create history entry for the group share
+        DatasetShareHistory history = new DatasetShareHistory(
+                null, dataset, null, sharedByUser,
+                ZonedDateTime.now(ZoneId.of("Europe/Athens")),
+                groupShareAction,
+                "Shared with group: " + group.getName() + (comment != null ? " - " + comment : "")
+        );
+        datasetShareHistoryRepository.save(history);
+    }
+
+    /**
+     * Remove group share from a dataset.
+     */
+    @Transactional
+    public void removeGroupFromSharedDataset(UserDetails userDetails, Integer datasetId, Integer groupId, String comments) {
+        Dataset dataset = datasetRepository.findById(datasetId)
+                .orElseThrow(() -> new EntityNotFoundException("Dataset not found"));
+
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new EntityNotFoundException("Group not found"));
+
+        User actionUser = userRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+        // Validate permission
+        boolean isOwner = dataset.getUser().getUsername().equalsIgnoreCase(userDetails.getUsername());
+        boolean isPrivileged = authorizationHelper.isSuperDatasetUser(userDetails);
+
+        if (!isOwner && !isPrivileged) {
+            throw new AccessDeniedException("Only the dataset owner or privileged users can remove group sharing");
+        }
+
+        DatasetGroupShare groupShare = datasetGroupShareRepository.findByDatasetAndGroup(dataset, group)
+                .orElseThrow(() -> new EntityNotFoundException("Dataset is not shared with this group"));
+
+        datasetGroupShareRepository.delete(groupShare);
+
+        // Record in history
+        DatasetShareActionType unshareAction = datasetSareActionTypeRepository.findByName(DatasetShareActionTypeEnum.GROUP_UNSHARE)
+                .orElseThrow(() -> new EntityNotFoundException("GROUP_UNSHARE action type not found"));
+
+        DatasetShareHistory history = new DatasetShareHistory(
+                null, dataset, null, actionUser,
+                ZonedDateTime.now(ZoneId.of("Europe/Athens")),
+                unshareAction,
+                "Removed group share: " + group.getName() + (comments != null ? " - " + comments : "")
+        );
+        datasetShareHistoryRepository.save(history);
+    }
+
+    /**
+     * Check if a user has access to a dataset (via direct share OR group share).
+     */
+    public boolean hasAccessToDataset(Integer datasetId, User user) {
+        Dataset dataset = datasetRepository.findById(datasetId).orElse(null);
+        if (dataset == null) {
+            return false;
+        }
+
+        // Owner always has access
+        if (dataset.getUser().getId().equals(user.getId())) {
+            return true;
+        }
+
+        // Check direct share
+        if (datasetShareRepository.findByDatasetAndSharedWithUser(dataset, user).isPresent()) {
+            return true;
+        }
+
+        // Check group share
+        return datasetGroupShareRepository.hasUserAccessViaGroup(datasetId, user.getId());
+    }
+
+    /**
+     * Get all groups a dataset is shared with.
+     */
+    public List<DatasetGroupShare> getGroupSharesForDataset(Integer datasetId) {
+        Dataset dataset = datasetRepository.findById(datasetId)
+                .orElseThrow(() -> new EntityNotFoundException("Dataset not found"));
+        return datasetGroupShareRepository.findByDataset(dataset);
     }
 }

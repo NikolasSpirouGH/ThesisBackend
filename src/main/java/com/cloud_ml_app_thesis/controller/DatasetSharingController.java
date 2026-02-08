@@ -2,9 +2,11 @@ package com.cloud_ml_app_thesis.controller;
 
 import com.cloud_ml_app_thesis.dto.request.dataset.DatasetRemoveSharedUsersRequest;
 import com.cloud_ml_app_thesis.dto.request.dataset.DatasetShareRequest;
+import com.cloud_ml_app_thesis.dto.request.share.GroupShareRequest;
 import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.service.DatasetShareService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -70,6 +72,30 @@ public class DatasetSharingController {
     ) {
 
         datasetShareService.declineDatasetShare(datasetId, targetUsername, comments, userDetails);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{datasetId}/share-group")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> shareDatasetWithGroup(
+            @PathVariable Integer datasetId,
+            @Valid @RequestBody GroupShareRequest request,
+            Authentication authentication
+    ) {
+        String sharedByUsername = authentication.getName();
+        datasetShareService.shareDatasetWithGroup(datasetId, request.getGroupId(), sharedByUsername, request.getComment());
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{datasetId}/share-group/{groupId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> unshareDatasetFromGroup(
+            @PathVariable Integer datasetId,
+            @PathVariable Integer groupId,
+            @RequestParam(required = false) String comment,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        datasetShareService.removeGroupFromSharedDataset(userDetails, datasetId, groupId, comment);
         return ResponseEntity.ok().build();
     }
 }
