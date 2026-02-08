@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.controller;
 
+import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.dataset.DatasetRemoveSharedUsersRequest;
 import com.cloud_ml_app_thesis.dto.request.dataset.DatasetShareRequest;
 import com.cloud_ml_app_thesis.dto.request.share.GroupShareRequest;
@@ -11,9 +12,7 @@ import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -27,9 +26,9 @@ public class DatasetSharingController {
     public ResponseEntity<Void> shareDataset(
             @PathVariable Integer datasetId,
             @RequestBody DatasetShareRequest request,
-            Authentication authentication
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        String sharedByUsername = authentication.getName();
+        String sharedByUsername = accountDetails.getUsername();
         datasetShareService.shareDatasetWithUsers(datasetId, request.getUsernames(), sharedByUsername, request.getComment());
         return ResponseEntity.ok().build();
     }
@@ -37,11 +36,11 @@ public class DatasetSharingController {
     @PatchMapping("/{datasetId}/share")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> removeSharedUsers(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal AccountDetails accountDetails,
             @PathVariable Integer datasetId,
             @RequestBody DatasetRemoveSharedUsersRequest request
     ) {
-        datasetShareService.removeUsersFromSharedDataset(userDetails, datasetId, request.getUsernames(), request.getComments());
+        datasetShareService.removeUsersFromSharedDataset(accountDetails, datasetId, request.getUsernames(), request.getComments());
         return ResponseEntity.ok().build();
     }
 
@@ -49,9 +48,9 @@ public class DatasetSharingController {
     public ResponseEntity<Dataset> copyDataset(
             @PathVariable Integer datasetId,
             @RequestParam(required = false) String targetUsername,
-            Authentication authentication
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        User currentUser = (User) authentication.getPrincipal();
+        User currentUser = accountDetails.getUser();
 
         Dataset copied = datasetShareService.copySharedDataset(
                 datasetId,
@@ -68,10 +67,10 @@ public class DatasetSharingController {
             @PathVariable Integer datasetId,
             @RequestParam(required = false) @Size(max = 50) String targetUsername,
             @RequestParam(required = false) @Size(max = 100) String comments,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
 
-        datasetShareService.declineDatasetShare(datasetId, targetUsername, comments, userDetails);
+        datasetShareService.declineDatasetShare(datasetId, targetUsername, comments, accountDetails);
         return ResponseEntity.ok().build();
     }
 
@@ -80,9 +79,9 @@ public class DatasetSharingController {
     public ResponseEntity<Void> shareDatasetWithGroup(
             @PathVariable Integer datasetId,
             @Valid @RequestBody GroupShareRequest request,
-            Authentication authentication
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        String sharedByUsername = authentication.getName();
+        String sharedByUsername = accountDetails.getUsername();
         datasetShareService.shareDatasetWithGroup(datasetId, request.getGroupId(), sharedByUsername, request.getComment());
         return ResponseEntity.ok().build();
     }
@@ -93,9 +92,9 @@ public class DatasetSharingController {
             @PathVariable Integer datasetId,
             @PathVariable Integer groupId,
             @RequestParam(required = false) String comment,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        datasetShareService.removeGroupFromSharedDataset(userDetails, datasetId, groupId, comment);
+        datasetShareService.removeGroupFromSharedDataset(accountDetails, datasetId, groupId, comment);
         return ResponseEntity.ok().build();
     }
 }

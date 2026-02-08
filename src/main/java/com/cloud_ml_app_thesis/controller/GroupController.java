@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.controller;
 
+import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.group.GroupDTO;
 import com.cloud_ml_app_thesis.dto.request.group.GroupCreateRequest;
 import com.cloud_ml_app_thesis.dto.request.group.GroupMemberRequest;
@@ -10,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,12 +27,12 @@ public class GroupController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GroupDTO> createGroup(
             @Valid @RequestBody GroupCreateRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        Group group = groupService.createGroup(request.getName(), request.getDescription(), userDetails);
+        Group group = groupService.createGroup(request.getName(), request.getDescription(), accountDetails);
 
         if (request.getInitialMemberUsernames() != null && !request.getInitialMemberUsernames().isEmpty()) {
-            groupService.addMembersToGroup(group.getId(), request.getInitialMemberUsernames(), userDetails);
+            groupService.addMembersToGroup(group.getId(), request.getInitialMemberUsernames(), accountDetails);
             group = groupService.getGroupById(group.getId());
         }
 
@@ -44,9 +44,9 @@ public class GroupController {
     public ResponseEntity<GroupDTO> addMembers(
             @PathVariable Integer groupId,
             @Valid @RequestBody GroupMemberRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        groupService.addMembersToGroup(groupId, request.getUsernames(), userDetails);
+        groupService.addMembersToGroup(groupId, request.getUsernames(), accountDetails);
         Group group = groupService.getGroupById(groupId);
         return ResponseEntity.ok(mapToDTO(group));
     }
@@ -56,9 +56,9 @@ public class GroupController {
     public ResponseEntity<GroupDTO> removeMembers(
             @PathVariable Integer groupId,
             @Valid @RequestBody GroupMemberRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        groupService.removeMembersFromGroup(groupId, request.getUsernames(), userDetails);
+        groupService.removeMembersFromGroup(groupId, request.getUsernames(), accountDetails);
         Group group = groupService.getGroupById(groupId);
         return ResponseEntity.ok(mapToDTO(group));
     }
@@ -66,27 +66,27 @@ public class GroupController {
     @GetMapping("/my-groups")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<GroupDTO>> getMyGroups(
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        List<Group> groups = groupService.getAllUserGroups(userDetails);
+        List<Group> groups = groupService.getAllUserGroups(accountDetails);
         return ResponseEntity.ok(groups.stream().map(this::mapToDTO).collect(Collectors.toList()));
     }
 
     @GetMapping("/leading")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<GroupDTO>> getGroupsAsLeader(
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        List<Group> groups = groupService.getGroupsAsLeader(userDetails);
+        List<Group> groups = groupService.getGroupsAsLeader(accountDetails);
         return ResponseEntity.ok(groups.stream().map(this::mapToDTO).collect(Collectors.toList()));
     }
 
     @GetMapping("/member-of")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<GroupDTO>> getGroupsAsMember(
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        List<Group> groups = groupService.getGroupsAsMember(userDetails);
+        List<Group> groups = groupService.getGroupsAsMember(accountDetails);
         return ResponseEntity.ok(groups.stream().map(this::mapToDTO).collect(Collectors.toList()));
     }
 
@@ -101,9 +101,9 @@ public class GroupController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> deleteGroup(
             @PathVariable Integer groupId,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        groupService.deleteGroup(groupId, userDetails);
+        groupService.deleteGroup(groupId, accountDetails);
         return ResponseEntity.ok().build();
     }
 

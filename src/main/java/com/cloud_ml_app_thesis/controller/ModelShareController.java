@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.controller;
 
+import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.request.model.ModelShareRequest;
 import com.cloud_ml_app_thesis.dto.request.share.GroupShareRequest;
 import com.cloud_ml_app_thesis.service.ModelShareService;
@@ -8,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -22,12 +22,12 @@ public class ModelShareController {
     public ResponseEntity<Void> shareModel(
             @PathVariable Integer modelId,
             @RequestBody ModelShareRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
         modelShareService.shareModelWithUsers(
                 modelId,
                 request.getUsernames(),
-                userDetails.getUsername(),
+                accountDetails.getUsername(),
                 request.getComment()
         );
         return ResponseEntity.ok().build();
@@ -37,10 +37,10 @@ public class ModelShareController {
     public ResponseEntity<Void> revokeModelShares(
             @PathVariable Integer modelId,
             @RequestBody ModelShareRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
         modelShareService.revokeModelShares(
-                userDetails,
+                accountDetails,
                 modelId,
                 request.getUsernames(), // null or empty means revoke all
                 request.getComment()
@@ -53,12 +53,12 @@ public class ModelShareController {
     public ResponseEntity<Void> shareModelWithGroup(
             @PathVariable Integer modelId,
             @Valid @RequestBody GroupShareRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
         modelShareService.shareModelWithGroup(
                 modelId,
                 request.getGroupId(),
-                userDetails.getUsername(),
+                accountDetails.getUsername(),
                 request.getComment()
         );
         return ResponseEntity.ok().build();
@@ -70,9 +70,9 @@ public class ModelShareController {
             @PathVariable Integer modelId,
             @PathVariable Integer groupId,
             @RequestParam(required = false) String comment,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        modelShareService.revokeModelGroupShare(userDetails, modelId, groupId, comment);
+        modelShareService.revokeModelGroupShare(accountDetails, modelId, groupId, comment);
         return ResponseEntity.ok().build();
     }
 }

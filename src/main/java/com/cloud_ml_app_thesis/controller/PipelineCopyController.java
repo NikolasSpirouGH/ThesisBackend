@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.controller;
 
+import com.cloud_ml_app_thesis.config.security.AccountDetails;
 import com.cloud_ml_app_thesis.dto.pipeline.PipelineCopyResponse;
 import com.cloud_ml_app_thesis.dto.request.pipeline.PipelineCopyRequest;
 import com.cloud_ml_app_thesis.entity.pipeline.PipelineCopy;
@@ -10,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,16 +29,16 @@ public class PipelineCopyController {
     public ResponseEntity<?> copyPipeline(
             @PathVariable Integer trainingId,
             @Valid @RequestBody PipelineCopyRequest request,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
         if (request.isGroupCopy()) {
             List<PipelineCopyResponse> responses = pipelineCopyService.copyPipelineToGroup(
-                    trainingId, request.getTargetGroupId(), userDetails
+                    trainingId, request.getTargetGroupId(), accountDetails
             );
             return ResponseEntity.ok(responses);
         } else {
             PipelineCopyResponse response = pipelineCopyService.copyPipeline(
-                    trainingId, request.getTargetUsername(), userDetails
+                    trainingId, request.getTargetUsername(), accountDetails
             );
             return ResponseEntity.ok(response);
         }
@@ -49,10 +49,10 @@ public class PipelineCopyController {
     public ResponseEntity<List<PipelineCopyResponse>> copyPipelineToGroup(
             @PathVariable Integer trainingId,
             @PathVariable Integer groupId,
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
         List<PipelineCopyResponse> responses = pipelineCopyService.copyPipelineToGroup(
-                trainingId, groupId, userDetails
+                trainingId, groupId, accountDetails
         );
         return ResponseEntity.ok(responses);
     }
@@ -72,9 +72,9 @@ public class PipelineCopyController {
     @GetMapping("/copies/sent")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<PipelineCopyResponse>> getMySentCopies(
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        List<PipelineCopy> copies = pipelineCopyService.getCopiesInitiatedByUser(userDetails);
+        List<PipelineCopy> copies = pipelineCopyService.getCopiesInitiatedByUser(accountDetails);
         return ResponseEntity.ok(
                 copies.stream().map(this::mapToResponse).collect(Collectors.toList())
         );
@@ -83,9 +83,9 @@ public class PipelineCopyController {
     @GetMapping("/copies/received")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<PipelineCopyResponse>> getMyReceivedCopies(
-            @AuthenticationPrincipal UserDetails userDetails
+            @AuthenticationPrincipal AccountDetails accountDetails
     ) {
-        List<PipelineCopy> copies = pipelineCopyService.getCopiesReceivedByUser(userDetails);
+        List<PipelineCopy> copies = pipelineCopyService.getCopiesReceivedByUser(accountDetails);
         return ResponseEntity.ok(
                 copies.stream().map(this::mapToResponse).collect(Collectors.toList())
         );
