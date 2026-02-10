@@ -75,8 +75,16 @@ public class WekaContainerPredictionService {
 
     private static final String WEKA_RUNNER_IMAGE = "thesisapp/weka-runner:latest";
 
+    /**
+     * Execute Weka model prediction.
+     * @param taskId Task ID for tracking
+     * @param modelId Model ID to use for prediction
+     * @param datasetKey Dataset key in MinIO
+     * @param user User executing the prediction
+     * @param useTrainBucket If true, read dataset from TRAIN_DATASET bucket; otherwise from PREDICT_DATASET
+     */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void executeWeka(String taskId, Integer modelId, String datasetKey, User user) {
+    public void executeWeka(String taskId, Integer modelId, String datasetKey, User user, boolean useTrainBucket) {
         boolean complete = false;
         ModelExecution execution = null;
         Path dataDir = null;
@@ -137,7 +145,11 @@ public class WekaContainerPredictionService {
             log.info("📁 Prediction paths: dataDir={}, outputDir={}", dataDir, outputDir);
 
             // 3. Download prediction dataset to data directory
-            String inputBucket = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
+            // Select input bucket based on whether we're using existing training dataset or uploaded prediction file
+            String inputBucket = useTrainBucket
+                    ? bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET)
+                    : bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
+            log.info("📦 Using {} bucket for prediction dataset", useTrainBucket ? "TRAIN_DATASET" : "PREDICT_DATASET");
             Path datasetPath = minioService.downloadObjectToTempFile(inputBucket, datasetKey);
 
             // Convert Excel to CSV if needed

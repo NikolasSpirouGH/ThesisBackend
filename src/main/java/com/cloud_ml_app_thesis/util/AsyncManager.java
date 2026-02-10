@@ -71,7 +71,7 @@ public class AsyncManager {
     public CompletableFuture<String> predictCustom(String taskId, Integer modelId, String datasetKey, User user) {
         log.info("🔍 [ASYNC] Prediction started [taskId={}]", taskId);
         try {
-            customModelExecutionService.executeCustom(taskId, modelId, datasetKey, user);
+            customModelExecutionService.executeCustom(taskId, modelId, datasetKey, user, false);
 
             return CompletableFuture.completedFuture(null);
 
@@ -114,7 +114,7 @@ public class AsyncManager {
     public CompletableFuture<String> predictWekaContainer(String taskId, Integer modelId, String datasetKey, User user) {
         log.info("🔍 [ASYNC] Weka container prediction started [taskId={}]", taskId);
         try {
-            wekaContainerPredictionService.executeWeka(taskId, modelId, datasetKey, user);
+            wekaContainerPredictionService.executeWeka(taskId, modelId, datasetKey, user, false);
             return CompletableFuture.completedFuture(null);
         } catch (Exception e) {
             return CompletableFuture.failedFuture(e);
@@ -171,12 +171,15 @@ public class AsyncManager {
     public CompletableFuture<Void> setupAndPredict(String taskId, User user, DeferredPredictionInput input) {
         log.info("🔍 [ASYNC] Setup + prediction started [taskId={}]", taskId);
         try {
-            String datasetKey = setupService.preparePrediction(user, input);
+            Object[] result = setupService.preparePrediction(user, input);
+            String datasetKey = (String) result[0];
+            boolean useTrainBucket = (Boolean) result[1];
+
             Model model = modelRepository.findByIdWithTrainingDetails(input.modelId())
                     .orElseThrow(() -> new IllegalArgumentException("Model not found: " + input.modelId()));
             switch (model.getModelType().getName()) {
-                case CUSTOM -> customModelExecutionService.executeCustom(taskId, input.modelId(), datasetKey, user);
-                case PREDEFINED -> wekaContainerPredictionService.executeWeka(taskId, input.modelId(), datasetKey, user);
+                case CUSTOM -> customModelExecutionService.executeCustom(taskId, input.modelId(), datasetKey, user, useTrainBucket);
+                case PREDEFINED -> wekaContainerPredictionService.executeWeka(taskId, input.modelId(), datasetKey, user, useTrainBucket);
             }
         } catch (Exception e) {
             log.error("Prediction failed [taskId={}]: {}", taskId, e.getMessage(), e);

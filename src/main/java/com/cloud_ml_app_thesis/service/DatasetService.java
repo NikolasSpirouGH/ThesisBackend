@@ -75,6 +75,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 import com.cloud_ml_app_thesis.exception.FileProcessingException;
 
+import com.cloud_ml_app_thesis.dto.dataset.DatasetColumnsResponse;
+
 import static com.cloud_ml_app_thesis.util.DatasetUtil.resolveDatasetMinioInfo;
 
 @Service
@@ -140,7 +142,7 @@ public class DatasetService {
         return datasetRepository.findAll(spec, pageable);
     }
 
-    public GenericResponse<Dataset> uploadDataset(MultipartFile file, User user, DatasetFunctionalTypeEnum datasetFunctionalTypeEnum) {
+    public GenericResponse<Dataset> uploadDataset(MultipartFile file, User user, DatasetFunctionalTypeEnum datasetFunctionalTypeEnum, DatasetAccessibilityEnum accessibilityEnum) {
 
         log.info("Uploading dataset with original file name: {}", file.getOriginalFilename());
         String originalFilename = file.getOriginalFilename();
@@ -174,10 +176,18 @@ public class DatasetService {
         dataset.setFilePath(bucketName + "/" + objectName);
         dataset.setFileSize(file.getSize());
         dataset.setContentType(file.getContentType());
-        datasetAccessibilityRepository.findAll().forEach(a -> System.out.println("👀 " + a.getName()));
 
-        DatasetAccessibility privateAccessibility = datasetAccessibilityRepository.findByName(DatasetAccessibilityEnum.PRIVATE).orElseThrow(() -> new EntityNotFoundException("Could not find PRIVATE dataset accessibility"));
-        dataset.setAccessibility(privateAccessibility);
+        // Use the provided accessibility, default to PRIVATE if not specified
+        DatasetAccessibilityEnum actualAccessibility = accessibilityEnum != null ? accessibilityEnum : DatasetAccessibilityEnum.PRIVATE;
+        DatasetAccessibility accessibility = datasetAccessibilityRepository.findByName(actualAccessibility)
+                .orElseThrow(() -> new EntityNotFoundException("Could not find " + actualAccessibility + " dataset accessibility"));
+        dataset.setAccessibility(accessibility);
+        log.info("Dataset accessibility set to: {}", actualAccessibility);
+
+        // Set functional type (TRAIN or PREDICT)
+        dataset.setFunctionalType(datasetFunctionalTypeEnum);
+        log.info("Dataset functional type set to: {}", datasetFunctionalTypeEnum);
+
         dataset.setUploadDate(ZonedDateTime.now(ZoneId.of("Europe/Athens")));
 
         if (dataset.getCategory() == null) {
@@ -242,6 +252,9 @@ public class DatasetService {
         if (dataset.getAccessibility() != null) {
             dto.setStatus(dataset.getAccessibility().getName());
         }
+
+        // Set functional type
+        dto.setFunctionalType(dataset.getFunctionalType());
 
         // Set owner username
         if (dataset.getUser() != null) {
@@ -454,5 +467,49 @@ public class DatasetService {
         // Delete from database
         datasetRepository.delete(dataset);
         log.info("Dataset deleted successfully from database: ID={}", datasetId);
+    }
+
+    /**
+     * Get columns information for an existing dataset.
+     * @param datasetId The dataset ID
+     * @param user The requesting user
+     * @return DatasetColumnsResponse with column information
+     */
+    public DatasetColumnsResponse getDatasetColumns(Integer datasetId, User user) {
+        Dataset dataset = datasetRepository.findById(datasetId)
+                .orElseThrow(() -> new EntityNotFoundException("Dataset not found with ID: " + datasetId));
+
+        // Check access (owner or public)
+        boolean isOwner = dataset.getUser().getUsername().equals(user.getUsername());
+        DatasetAccessibilityEnum accessibilityName = dataset.getAccessibility() != null
+                ? dataset.getAccessibility().getName()
+                : null;
+        boolean isPublic = DatasetAccessibilityEnum.PUBLIC.equals(accessibilityName);
+
+        log.debug("getDatasetColumns access check - datasetId: {}, requestingUser: {}, datasetOwner: {}, isOwner: {}, accessibility: {}, isPublic: {}",
+                datasetId, user.getUsername(), dataset.getUser().getUsername(), isOwner, accessibilityName, isPublic);
+
+        if (!isOwner && !isPublic) {
+            log.warn("Access denied for user '{}' to dataset {} (owner: {}, accessibility: {})",
+                    user.getUsername(), datasetId, dataset.getUser().getUsername(), accessibilityName);
+            throw new AuthorizationDeniedException("You are not authorized to access this dataset");
+        }
+
+        // Download from MinIO and parse columns
+        String bucket = bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET);
+        Path tempFile = minioService.downloadObjectToTempFile(bucket, dataset.getFileName());
+
+        try {
+            return DatasetUtil.parseDatasetColumnsFromPath(tempFile, dataset.getOriginalFileName());
+        } catch (Exception e) {
+            log.error("Failed to parse dataset columns for dataset ID {}: {}", datasetId, e.getMessage(), e);
+            throw new FileProcessingException("Failed to parse dataset columns", e);
+        } finally {
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException e) {
+                log.warn("Failed to delete temp file: {}", tempFile, e);
+            }
+        }
     }
 }

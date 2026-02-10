@@ -5,6 +5,7 @@ import com.cloud_ml_app_thesis.entity.Category;
 import com.cloud_ml_app_thesis.entity.DatasetConfiguration;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.entity.accessibility.DatasetAccessibility;
+import com.cloud_ml_app_thesis.enumeration.DatasetFunctionalTypeEnum;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
@@ -73,6 +74,10 @@ public class Dataset {
 
     @Column(name = "description")
     private String description;
+
+    @Column(name = "functional_type")
+    @Enumerated(EnumType.STRING)
+    private DatasetFunctionalTypeEnum functionalType;
 
     @JsonManagedReference
     @OneToMany(mappedBy = "dataset", cascade = CascadeType.ALL, orphanRemoval = true)

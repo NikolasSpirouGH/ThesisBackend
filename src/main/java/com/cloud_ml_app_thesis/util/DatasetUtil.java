@@ -423,6 +423,65 @@ public class DatasetUtil {
     }
 
     /**
+     * Parse dataset columns from a file Path
+     * @param tempFile The path to the dataset file
+     * @param originalFilename The original filename (used to detect file type)
+     * @return DatasetColumnsResponse with column information
+     * @throws Exception if parsing fails
+     */
+    public static DatasetColumnsResponse parseDatasetColumnsFromPath(Path tempFile, String originalFilename) throws Exception {
+        // Load dataset based on file extension
+        Instances data;
+
+        logger.info("📂 Parsing dataset file: {}", originalFilename);
+        logger.info("📏 File size: {} bytes", Files.size(tempFile));
+
+        String fileExtension = getFileExtension(originalFilename);
+        if (fileExtension.equalsIgnoreCase(".arff")) {
+            logger.info("📋 Detected ARFF file, loading with ArffLoader");
+            ArffLoader loader = new ArffLoader();
+            loader.setFile(tempFile.toFile());
+            data = loader.getDataSet();
+        } else if (isExcelFile(fileExtension)) {
+            logger.info("📊 Detected Excel file, converting to CSV first...");
+            String csvPath = XlsToCsv.convertExcelToCsv(Files.newInputStream(tempFile), originalFilename);
+            CSVLoader loader = new CSVLoader();
+            loader.setFile(new File(csvPath));
+            loader.setNoHeaderRowPresent(false);
+            data = loader.getDataSet();
+        } else {
+            logger.info("📊 Detected CSV file, loading with CSVLoader (first row as headers)");
+            CSVLoader loader = new CSVLoader();
+            loader.setFile(tempFile.toFile());
+            loader.setNoHeaderRowPresent(false);
+            data = loader.getDataSet();
+        }
+
+        logger.info("✅ Dataset loaded: {} attributes, {} instances", data.numAttributes(), data.numInstances());
+
+        // Build column DTOs
+        List<DatasetColumnDTO> columns = new ArrayList<>();
+        for (int i = 0; i < data.numAttributes(); i++) {
+            Attribute attr = data.attribute(i);
+
+            DatasetColumnDTO column = DatasetColumnDTO.builder()
+                    .index(i + 1)  // 1-based index
+                    .name(attr.name())
+                    .type(getAttributeType(attr))
+                    .distinctValues(attr.isNominal() ? attr.numValues() : null)
+                    .build();
+
+            columns.add(column);
+        }
+
+        return DatasetColumnsResponse.builder()
+                .columns(columns)
+                .totalRows(data.numInstances())
+                .totalColumns(data.numAttributes())
+                .build();
+    }
+
+    /**
      * Parse dataset columns from a MultipartFile
      * @param file The uploaded dataset file (CSV or ARFF)
      * @return DatasetColumnsResponse with column information

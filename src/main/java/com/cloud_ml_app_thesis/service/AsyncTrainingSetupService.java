@@ -22,6 +22,7 @@ import com.cloud_ml_app_thesis.exception.FileProcessingException;
 import com.cloud_ml_app_thesis.repository.CustomAlgorithmRepository;
 import com.cloud_ml_app_thesis.repository.DatasetConfigurationRepository;
 import com.cloud_ml_app_thesis.repository.TrainingRepository;
+import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
 import com.cloud_ml_app_thesis.util.PathBackedMultipartFile;
@@ -54,6 +55,7 @@ public class AsyncTrainingSetupService {
     private final TrainingRepository trainingRepository;
     private final TrainingStatusRepository trainingStatusRepository;
     private final DatasetConfigurationRepository datasetConfigurationRepository;
+    private final DatasetRepository datasetRepository;
     private final CustomAlgorithmRepository customAlgorithmRepository;
     private final ModelRepository modelRepository;
 
@@ -94,7 +96,12 @@ public class AsyncTrainingSetupService {
 
         // Resolve dataset
         Dataset dataset;
-        if (input.datasetTempFile() != null) {
+        if (input.existingDatasetId() != null) {
+            // Use existing dataset from database
+            dataset = datasetRepository.findById(input.existingDatasetId())
+                    .orElseThrow(() -> new EntityNotFoundException("Dataset not found: " + input.existingDatasetId()));
+            log.info("📂 Using existing dataset: id={}, fileName={}", dataset.getId(), dataset.getFileName());
+        } else if (input.datasetTempFile() != null) {
             // Create PathBackedMultipartFile and upload
             MultipartFile pbmf = new PathBackedMultipartFile(
                     input.datasetTempFile(),
@@ -102,7 +109,7 @@ public class AsyncTrainingSetupService {
                     input.datasetContentType(),
                     input.datasetFileSize()
             );
-            dataset = datasetService.uploadDataset(pbmf, user, DatasetFunctionalTypeEnum.TRAIN).getDataHeader();
+            dataset = datasetService.uploadDataset(pbmf, user, DatasetFunctionalTypeEnum.TRAIN, null).getDataHeader();
             log.info("📂 New dataset uploaded: {}", dataset.getFileName());
         } else if (retrainMode && retrainedFrom != null) {
             DatasetConfiguration baseDatasetConfig = retrainedFrom.getDatasetConfiguration();
@@ -112,7 +119,7 @@ public class AsyncTrainingSetupService {
             dataset = baseDatasetConfig.getDataset();
             log.info("📋 Using dataset from base training: {}", dataset.getFileName());
         } else {
-            throw new BadRequestException("datasetFile is required for new training.");
+            throw new BadRequestException("datasetFile or datasetId is required for new training.");
         }
 
         // Resolve dataset configuration
@@ -234,22 +241,41 @@ public class AsyncTrainingSetupService {
     }
 
     /**
-     * Prepares prediction by uploading the prediction file to MinIO.
+     * Prepares prediction by uploading the prediction file to MinIO or using existing dataset.
      * Contains logic extracted from PredictionOrchestrator line 50.
+     *
+     * @return Object array: [datasetKey (String), useTrainBucket (Boolean)]
      */
-    public String preparePrediction(User user, DeferredPredictionInput input) {
+    public Object[] preparePrediction(User user, DeferredPredictionInput input) {
         log.info("📦 [SETUP] Preparing prediction for user={}", user.getUsername());
 
-        MultipartFile pbmf = new PathBackedMultipartFile(
-                input.predictionTempFile(),
-                input.originalFilename(),
-                input.contentType(),
-                input.fileSize()
-        );
+        String datasetKey;
+        boolean useTrainBucket;
 
-        String datasetKey = datasetService.uploadPredictionFile(pbmf, user);
-        log.info("📤 Uploaded prediction file: {}", datasetKey);
+        if (input.existingDatasetId() != null) {
+            // Use existing dataset from TRAIN_DATASET bucket
+            Dataset dataset = datasetRepository.findById(input.existingDatasetId())
+                    .orElseThrow(() -> new EntityNotFoundException("Dataset not found: " + input.existingDatasetId()));
+            datasetKey = dataset.getFileName();
+            useTrainBucket = true;
+            log.info("📂 Using existing dataset for prediction: id={}, fileName={}", dataset.getId(), datasetKey);
+        } else if (input.predictionTempFile() != null) {
+            // Upload new prediction file to PREDICT_DATASET bucket AND save as Dataset entity
+            MultipartFile pbmf = new PathBackedMultipartFile(
+                    input.predictionTempFile(),
+                    input.originalFilename(),
+                    input.contentType(),
+                    input.fileSize()
+            );
+            // Save as Dataset entity (with PREDICT functional type, PRIVATE accessibility)
+            Dataset dataset = datasetService.uploadDataset(pbmf, user, DatasetFunctionalTypeEnum.PREDICT, null).getDataHeader();
+            datasetKey = dataset.getFileName();
+            useTrainBucket = false;
+            log.info("📤 Uploaded prediction file as dataset: id={}, fileName={}", dataset.getId(), datasetKey);
+        } else {
+            throw new BadRequestException("Either predictionFile or datasetId is required for prediction.");
+        }
 
-        return datasetKey;
+        return new Object[]{datasetKey, useTrainBucket};
     }
 }

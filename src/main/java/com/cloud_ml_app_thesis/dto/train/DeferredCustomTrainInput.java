@@ -17,5 +17,6 @@ public record DeferredCustomTrainInput(
     Integer retrainFromTrainingId,  // nullable
     Integer retrainFromModelId,     // nullable
     String basicAttributesColumns,  // nullable
-    String targetColumn             // nullable
+    String targetColumn,            // nullable
+    Integer existingDatasetId       // nullable - if set, use this instead of temp file
 ) {}

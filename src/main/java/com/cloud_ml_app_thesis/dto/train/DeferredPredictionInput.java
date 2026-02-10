@@ -11,5 +11,6 @@ public record DeferredPredictionInput(
     String originalFilename,
     String contentType,
     long fileSize,
-    Integer modelId
+    Integer modelId,
+    Integer existingDatasetId       // nullable - if set, use this instead of temp file
 ) {}

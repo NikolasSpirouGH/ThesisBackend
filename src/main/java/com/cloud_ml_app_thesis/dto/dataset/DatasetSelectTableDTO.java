@@ -1,5 +1,6 @@
 package com.cloud_ml_app_thesis.dto.dataset;
 
+import com.cloud_ml_app_thesis.enumeration.DatasetFunctionalTypeEnum;
 import com.cloud_ml_app_thesis.enumeration.accessibility.DatasetAccessibilityEnum;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -21,6 +22,7 @@ public class DatasetSelectTableDTO {
     private String contentType;
     private ZonedDateTime uploadDate;
     private DatasetAccessibilityEnum status;
+    private DatasetFunctionalTypeEnum functionalType;
     private String description;
     private long completeTrainingCount;
     private long failedTrainingCount;

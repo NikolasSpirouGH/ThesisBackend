@@ -98,7 +98,7 @@ public class TrainingHelper {
         // ----- Upload νέου αρχείου (αν υπάρχει)
         String datasetId;
         if (hasFile) {
-            GenericResponse<Dataset> uploadResp = datasetService.uploadDataset(file, user, DatasetFunctionalTypeEnum.TRAIN);
+            GenericResponse<Dataset> uploadResp = datasetService.uploadDataset(file, user, DatasetFunctionalTypeEnum.TRAIN, null);
             datasetId = uploadResp.getDataHeader().getId().toString();
             hasDatasetId = true;
             log.info("📂 File uploaded, datasetId = {}", datasetId);

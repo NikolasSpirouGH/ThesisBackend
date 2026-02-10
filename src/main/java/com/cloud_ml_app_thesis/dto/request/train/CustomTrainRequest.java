@@ -37,6 +37,12 @@ public class CustomTrainRequest {
     private MultipartFile datasetFile;
 
     @Schema(
+            description = "ID of existing dataset. Alternative to uploading datasetFile.",
+            example = "10"
+    )
+    private Integer datasetId;
+
+    @Schema(
             description = "Optional parameters JSON file to override default algorithm parameters. Will be mounted at `/data/params.json`.",
             type = "string",
             format = "binary",

@@ -1,6 +1,7 @@
 package com.cloud_ml_app_thesis.controller;
 
 import com.cloud_ml_app_thesis.config.security.AccountDetails;
+import com.cloud_ml_app_thesis.dto.dataset.DatasetColumnsResponse;
 import com.cloud_ml_app_thesis.dto.request.dataset.*;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.entity.User;
@@ -55,8 +56,12 @@ public class DatasetController {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new EntityNotFoundException("User not found with username: " + username));
 
-        //TODO resolve the info the user may have provided or make another endpoint
-        GenericResponse<?> datasetResponse = datasetService.uploadDataset(request.getFile(), user, request.getFunctionalType());
+        GenericResponse<?> datasetResponse = datasetService.uploadDataset(
+                request.getFile(),
+                user,
+                request.getFunctionalType(),
+                request.getAccessibility()
+        );
         if (datasetResponse.getErrorCode() != null && !datasetResponse.getErrorCode().isBlank()) {
             return ResponseEntity.internalServerError().body(datasetResponse);
         }
@@ -71,7 +76,7 @@ public class DatasetController {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new EntityNotFoundException("User not found with username: " + username));
         //TODO change 3rd argument here
-        GenericResponse<?> response = datasetService.uploadDataset(request.getFile(), user, DatasetFunctionalTypeEnum.TRAIN);
+        GenericResponse<?> response = datasetService.uploadDataset(request.getFile(), user, DatasetFunctionalTypeEnum.TRAIN, null);
         if (response.getErrorCode() != null && !response.getErrorCode().isBlank()) {
             return ResponseEntity.internalServerError().body(response);
         }
@@ -178,6 +183,16 @@ public class DatasetController {
             return ResponseEntity.internalServerError().body(response);
         }
         return ResponseEntity.ok().body(response);
+    }
+
+    @GetMapping("/{id}/columns")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<DatasetColumnsResponse> getDatasetColumns(
+            @PathVariable Integer id,
+            @AuthenticationPrincipal AccountDetails userDetails) {
+        User user = userRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+        return ResponseEntity.ok(datasetService.getDatasetColumns(id, user));
     }
 
 }

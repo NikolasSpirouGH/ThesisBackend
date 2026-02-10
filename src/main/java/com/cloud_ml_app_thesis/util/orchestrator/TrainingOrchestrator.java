@@ -6,8 +6,11 @@ import com.cloud_ml_app_thesis.dto.request.train.TrainingStartRequest;
 import com.cloud_ml_app_thesis.dto.train.DeferredCustomTrainInput;
 import com.cloud_ml_app_thesis.dto.train.DeferredWekaTrainInput;
 import com.cloud_ml_app_thesis.entity.*;
+import com.cloud_ml_app_thesis.entity.dataset.Dataset;
 import com.cloud_ml_app_thesis.entity.model.Model;
 import com.cloud_ml_app_thesis.enumeration.accessibility.AlgorithmAccessibiltyEnum;
+import com.cloud_ml_app_thesis.enumeration.accessibility.DatasetAccessibilityEnum;
+import com.cloud_ml_app_thesis.repository.dataset.DatasetRepository;
 import com.cloud_ml_app_thesis.enumeration.status.TaskTypeEnum;
 import com.cloud_ml_app_thesis.exception.BadRequestException;
 import com.cloud_ml_app_thesis.repository.*;
@@ -36,6 +39,7 @@ public class TrainingOrchestrator {
     private final TaskStatusService taskStatusService;
     private final TrainingRepository trainingRepository;
     private final ModelRepository modelRepository;
+    private final DatasetRepository datasetRepository;
 
     /**
      * Handles custom algorithm training requests.
@@ -99,8 +103,24 @@ public class TrainingOrchestrator {
 
         // Validate dataset requirement for non-retrain mode
         boolean hasFile = request.getDatasetFile() != null && !request.getDatasetFile().isEmpty();
-        if (!hasFile && !retrainMode) {
-            throw new BadRequestException("datasetFile is required for new training.");
+        boolean hasDatasetId = request.getDatasetId() != null;
+
+        if (hasFile && hasDatasetId) {
+            throw new BadRequestException("Provide either datasetFile or datasetId, not both.");
+        }
+        if (!hasFile && !hasDatasetId && !retrainMode) {
+            throw new BadRequestException("Either datasetFile or datasetId is required for new training.");
+        }
+
+        // Validate access if using existing dataset
+        if (hasDatasetId) {
+            Dataset ds = datasetRepository.findById(request.getDatasetId())
+                    .orElseThrow(() -> new EntityNotFoundException("Dataset not found: " + request.getDatasetId()));
+            boolean canAccess = ds.getUser().getUsername().equals(user.getUsername())
+                    || ds.getAccessibility().getName().equals(DatasetAccessibilityEnum.PUBLIC);
+            if (!canAccess) {
+                throw new AccessDeniedException("User not authorized to use this dataset");
+            }
         }
 
         // ========== SAVE TO TEMP + INIT TASK + ASYNC (non-blocking) ==========
@@ -125,7 +145,8 @@ public class TrainingOrchestrator {
                     request.getTrainingId(),
                     request.getModelId(),
                     request.getBasicAttributesColumns(),
-                    request.getTargetColumn()
+                    request.getTargetColumn(),
+                    request.getDatasetId()  // existingDatasetId
             );
 
             // Fire and forget - async thread will handle MinIO upload and training

@@ -61,8 +61,16 @@ public class CustomModelExecutionService {
     private final TransactionTemplate transactionTemplate;
 
 
+    /**
+     * Execute custom model prediction.
+     * @param taskId Task ID for tracking
+     * @param modelId Model ID to use for prediction
+     * @param datasetKey Dataset key in MinIO
+     * @param user User executing the prediction
+     * @param useTrainBucket If true, read dataset from TRAIN_DATASET bucket; otherwise from PREDICT_DATASET
+     */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void executeCustom(String taskId, Integer modelId, String datasetKey, User user) {
+    public void executeCustom(String taskId, Integer modelId, String datasetKey, User user, boolean useTrainBucket) {
         boolean complete = false;
         ModelExecution execution = null;
         Path dataDir = null;
@@ -102,7 +110,11 @@ public class CustomModelExecutionService {
                 throw new IllegalArgumentException("You cannot predict with this model. You have to finalize it first");
             }
 
-            String inputBucket = bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
+            // Select input bucket based on whether we're using existing training dataset or uploaded prediction file
+            String inputBucket = useTrainBucket
+                    ? bucketResolver.resolve(BucketTypeEnum.TRAIN_DATASET)
+                    : bucketResolver.resolve(BucketTypeEnum.PREDICT_DATASET);
+            log.info("📦 Using {} bucket for prediction dataset", useTrainBucket ? "TRAIN_DATASET" : "PREDICT_DATASET");
             String modelBucket = bucketResolver.resolve(BucketTypeEnum.MODEL);
 
             // 2. Δημιουργία shared paths

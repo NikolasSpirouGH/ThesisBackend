@@ -15,7 +15,10 @@ public class ExecuteRequest {
     @Schema(description = "Model ID", example = "5", requiredMode = Schema.RequiredMode.REQUIRED)
     private Integer modelId;
 
-    @Schema(description = "Prediction dataset (.csv)", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Prediction dataset (.csv)", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     private MultipartFile predictionFile;
+
+    @Schema(description = "ID of existing training dataset for prediction. Alternative to predictionFile.", example = "10")
+    private Integer datasetId;
 
 }
