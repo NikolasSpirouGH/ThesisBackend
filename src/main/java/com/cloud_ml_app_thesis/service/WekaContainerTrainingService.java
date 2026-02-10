@@ -48,6 +48,9 @@ import com.cloud_ml_app_thesis.repository.TaskStatusRepository;
 import com.cloud_ml_app_thesis.repository.TrainingRepository;
 import com.cloud_ml_app_thesis.repository.model.ModelRepository;
 import com.cloud_ml_app_thesis.repository.status.TrainingStatusRepository;
+
+import weka.core.Instances;
+import weka.core.converters.CSVLoader;
 import com.cloud_ml_app_thesis.util.ContainerRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -165,9 +168,14 @@ public class WekaContainerTrainingService {
             log.info("✅ Copied dataset.csv");
 
             // 6. Create params.json with algorithm info
+            // Auto-detect algorithm type based on target column type (nominal=CLASSIFICATION, numeric=REGRESSION)
+            // This allows algorithms like RandomForest to work for both classification and regression
+            String effectiveAlgorithmType = detectAlgorithmType(
+                    datasetInside, metadata.targetColumn(), algorithm.getType().getName());
+
             Map<String, Object> params = new HashMap<>();
             params.put("algorithmClassName", algorithm.getClassName());
-            params.put("algorithmType", algorithm.getType().getName().name());
+            params.put("algorithmType", effectiveAlgorithmType);
             params.put("options", algorithmConfig.getOptions() != null ? algorithmConfig.getOptions() : "");
             params.put("targetColumn", metadata.targetColumn());
             params.put("basicAttributesColumns", metadata.basicAttributesColumns());
@@ -232,13 +240,14 @@ public class WekaContainerTrainingService {
 
             modelService.saveModel(training, modelUrl, metricsUrl, predefinedType);
 
-            // 12. Set algorithmType on AlgorithmConfiguration (required for visualization)
-            AlgorithmTypeEnum algTypeEnum = algorithm.getType().getName();
+            // 12. Set algorithmType on AlgorithmConfiguration (required for visualization and prediction)
+            // Use the auto-detected type (effectiveAlgorithmType) not the database type
+            AlgorithmTypeEnum algTypeEnum = AlgorithmTypeEnum.valueOf(effectiveAlgorithmType);
             AlgorithmType algType = algorithmTypeRepository.findByName(algTypeEnum)
                     .orElseThrow(() -> new EntityNotFoundException("AlgorithmType not found: " + algTypeEnum));
             algorithmConfig.setAlgorithmType(algType);
             algorithmConfigurationRepository.save(algorithmConfig);
-            log.info("✅ Set algorithmType={} on AlgorithmConfiguration", algTypeEnum);
+            log.info("✅ Set algorithmType={} on AlgorithmConfiguration (effective type based on target column)", algTypeEnum);
 
             complete = true;
 
@@ -415,6 +424,67 @@ public class WekaContainerTrainingService {
             }
         } catch (Exception e) {
             log.warn("⚠️ Failed to adjust permissions for {}: {}", dir, e.getMessage());
+        }
+    }
+
+    /**
+     * Detects the effective algorithm type based on the target column type.
+     * Many Weka algorithms (like RandomForest) can do both classification and regression.
+     * - If target column is NOMINAL (string values like yes/no) → CLASSIFICATION
+     * - If target column is NUMERIC → REGRESSION
+     * - CLUSTERING algorithms are kept as-is (they don't use target column)
+     *
+     * @param datasetPath Path to the CSV dataset
+     * @param targetColumn Target column (1-based index as string)
+     * @param databaseType The algorithm type stored in the database
+     * @return The effective algorithm type based on target column analysis
+     */
+    private String detectAlgorithmType(Path datasetPath, String targetColumn, AlgorithmTypeEnum databaseType) {
+        // Clustering doesn't depend on target column type
+        if (databaseType == AlgorithmTypeEnum.CLUSTERING) {
+            return databaseType.name();
+        }
+
+        try {
+            CSVLoader loader = new CSVLoader();
+            loader.setSource(datasetPath.toFile());
+            Instances data = loader.getDataSet();
+
+            // Parse target column index (1-based to 0-based)
+            int targetIdx = -1;
+            if (targetColumn != null && !targetColumn.isEmpty()) {
+                try {
+                    targetIdx = Integer.parseInt(targetColumn.trim()) - 1;
+                } catch (NumberFormatException e) {
+                    // It might be a column name, try to find it
+                    weka.core.Attribute attr = data.attribute(targetColumn);
+                    if (attr != null) {
+                        targetIdx = attr.index();
+                    }
+                }
+            }
+
+            // Default to last column if target not specified
+            if (targetIdx < 0 || targetIdx >= data.numAttributes()) {
+                targetIdx = data.numAttributes() - 1;
+            }
+
+            weka.core.Attribute targetAttr = data.attribute(targetIdx);
+            boolean isNominal = targetAttr.isNominal() || targetAttr.isString();
+
+            String detectedType = isNominal ? "CLASSIFICATION" : "REGRESSION";
+
+            if (!detectedType.equals(databaseType.name())) {
+                log.info("🔄 Auto-detected algorithm type: {} (target column '{}' is {}). Database type was: {}",
+                        detectedType, targetAttr.name(), isNominal ? "nominal" : "numeric", databaseType.name());
+            }
+
+            return detectedType;
+
+        } catch (Exception e) {
+            log.warn("⚠️ Could not auto-detect algorithm type, using database type {}: {}",
+                    databaseType.name(), e.getMessage());
+            return databaseType.name();
         }
     }
 }

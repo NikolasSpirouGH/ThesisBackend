@@ -253,12 +253,15 @@ public class AsyncTrainingSetupService {
         boolean useTrainBucket;
 
         if (input.existingDatasetId() != null) {
-            // Use existing dataset from TRAIN_DATASET bucket
+            // Use existing dataset - determine bucket based on functional type
             Dataset dataset = datasetRepository.findById(input.existingDatasetId())
                     .orElseThrow(() -> new EntityNotFoundException("Dataset not found: " + input.existingDatasetId()));
             datasetKey = dataset.getFileName();
-            useTrainBucket = true;
-            log.info("📂 Using existing dataset for prediction: id={}, fileName={}", dataset.getId(), datasetKey);
+            // TRAIN datasets are in TRAIN_DATASET bucket, PREDICT datasets are in PREDICT_DATASET bucket
+            // Default to TRAIN bucket if functionalType is null (for older datasets)
+            useTrainBucket = dataset.getFunctionalType() == null || dataset.getFunctionalType() == DatasetFunctionalTypeEnum.TRAIN;
+            log.info("📂 Using existing dataset for prediction: id={}, fileName={}, functionalType={}, useTrainBucket={}",
+                    dataset.getId(), datasetKey, dataset.getFunctionalType(), useTrainBucket);
         } else if (input.predictionTempFile() != null) {
             // Upload new prediction file to PREDICT_DATASET bucket AND save as Dataset entity
             MultipartFile pbmf = new PathBackedMultipartFile(

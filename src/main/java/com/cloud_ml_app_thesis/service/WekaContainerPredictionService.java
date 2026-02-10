@@ -176,8 +176,9 @@ public class WekaContainerPredictionService {
 
             // 4b. For CLASSIFICATION: Extract class labels from training dataset
             // This replicates what the in-memory approach does in DatasetService.loadPredictionInstancesFromCsv
+            // Use algorithmConfig.getAlgorithmType() (effective type from training) not algorithm.getType() (database type)
             List<String> classLabels = null;
-            if (algorithmConfig.getAlgorithm().getType().getName() == com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum.CLASSIFICATION) {
+            if (algorithmConfig.getAlgorithmType().getName() == com.cloud_ml_app_thesis.enumeration.AlgorithmTypeEnum.CLASSIFICATION) {
                 try {
                     String[] pathParts = com.cloud_ml_app_thesis.util.DatasetUtil.resolveDatasetMinioInfo(datasetConfig.getDataset());
                     String trainingBucket = pathParts[0];
