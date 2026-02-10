@@ -311,6 +311,7 @@ CREATE TABLE IF NOT EXISTS datasets (
     accessibility_id INTEGER NOT NULL,
     category_id INTEGER,
     description TEXT,
+    functional_type VARCHAR(20) DEFAULT 'TRAIN',
     CONSTRAINT fk_datasets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_datasets_accessibility FOREIGN KEY (accessibility_id) REFERENCES CONST_DATASET_ACCESSIBILITIES(id),
     CONSTRAINT fk_datasets_category FOREIGN KEY (category_id) REFERENCES categories(id)
