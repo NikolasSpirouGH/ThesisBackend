@@ -73,7 +73,7 @@ def main():
         # Initialize and train the algorithm
         model = Algorithm(params)
         print("Training started...")
-        model.fit(X, y)
+        user_metrics = model.fit(X, y)
         print("Training completed!")
 
         # Ensure model directory exists
@@ -114,13 +114,15 @@ def main():
 
         # Save metrics file (required by the system)
         metrics = {
-            'accuracy': 'N/A',  # Would need validation set to compute
-            'loss': 'N/A',      # Final training loss if available
             'training_samples': int(X.shape[0]),
             'features': int(X.shape[1]),
-            'epochs_completed': params.get('n_epochs', 'unknown'),
             'status': 'completed'
         }
+
+        # Merge user-provided metrics if returned from fit()
+        if user_metrics and isinstance(user_metrics, dict):
+            metrics.update(user_metrics)
+            print(f"User metrics received: {user_metrics}")
 
         metrics_path = os.path.join(model_dir, 'metrics.json')
         with open(metrics_path, 'w') as f:

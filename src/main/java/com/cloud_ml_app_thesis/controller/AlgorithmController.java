@@ -151,7 +151,7 @@ public class AlgorithmController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('USER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<com.cloud_ml_app_thesis.dto.custom_algorithm.CustomAlgorithmDTO> getCustomAlgorithmById(
             @PathVariable @Positive Integer id,
             @AuthenticationPrincipal AccountDetails accountDetails) {
@@ -194,6 +194,7 @@ public class AlgorithmController {
             @ApiResponse(responseCode = "403", description = "Access denied - not the owner")
     })
     @PatchMapping("/custom/update/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<GenericResponse<Void>> updateCustomAlgorithm(
             @PathVariable @Positive Integer id,
             @Valid @RequestBody CustomAlgorithmUpdateRequest request,
@@ -209,7 +210,7 @@ public class AlgorithmController {
             @ApiResponse(responseCode = "403", description = "Access denied - not the owner")
     })
     @DeleteMapping("/custom/delete/{id}")
-    @PreAuthorize("hasAuthority('USER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> deleteCustomAlgorithm(
             @PathVariable @Positive Integer id,
             @AuthenticationPrincipal AccountDetails accountDetails) {

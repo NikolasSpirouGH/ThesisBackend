@@ -652,9 +652,9 @@ public class KubernetesJobRunner implements ContainerRunner {
         try {
             kubernetesClient.pods().inNamespace(namespace).create(pod);
 
-            // Wait for pod to be ready
+            // Wait for pod to be ready (5 minutes for large images)
             kubernetesClient.pods().inNamespace(namespace).withName(podName)
-                    .waitUntilReady(60, TimeUnit.SECONDS);
+                    .waitUntilReady(300, TimeUnit.SECONDS);
 
             // Copy file from pod
             kubernetesClient.pods().inNamespace(namespace).withName(podName)

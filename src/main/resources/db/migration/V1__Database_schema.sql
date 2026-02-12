@@ -133,8 +133,8 @@ CREATE TABLE IF NOT EXISTS user_roles (
     user_id UUID NOT NULL,
     role_id INTEGER NOT NULL,
     PRIMARY KEY (user_id, role_id),
-    CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id) REFERENCES users(id),
-    CONSTRAINT fk_user_roles_role FOREIGN KEY (role_id) REFERENCES roles(id)
+    CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_roles_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
 );
 
 -- JWT Tokens Table (with CASCADE DELETE)
@@ -173,8 +173,8 @@ CREATE TABLE IF NOT EXISTS category_hierarchy (
     child_category_id INTEGER NOT NULL,
     parent_category_id INTEGER NOT NULL,
     PRIMARY KEY (child_category_id, parent_category_id),
-    CONSTRAINT fk_category_hierarchy_child FOREIGN KEY (child_category_id) REFERENCES categories(id),
-    CONSTRAINT fk_category_hierarchy_parent FOREIGN KEY (parent_category_id) REFERENCES categories(id)
+    CONSTRAINT fk_category_hierarchy_child FOREIGN KEY (child_category_id) REFERENCES categories(id) ON DELETE CASCADE,
+    CONSTRAINT fk_category_hierarchy_parent FOREIGN KEY (parent_category_id) REFERENCES categories(id) ON DELETE CASCADE
 );
 
 -- Category Requests Table
@@ -200,8 +200,8 @@ CREATE TABLE IF NOT EXISTS category_request_parents (
     category_request_id INTEGER NOT NULL,
     parent_category_id INTEGER NOT NULL,
     PRIMARY KEY (category_request_id, parent_category_id),
-    CONSTRAINT fk_category_request_parents_request FOREIGN KEY (category_request_id) REFERENCES category_requests(id),
-    CONSTRAINT fk_category_request_parents_category FOREIGN KEY (parent_category_id) REFERENCES categories(id)
+    CONSTRAINT fk_category_request_parents_request FOREIGN KEY (category_request_id) REFERENCES category_requests(id) ON DELETE CASCADE,
+    CONSTRAINT fk_category_request_parents_category FOREIGN KEY (parent_category_id) REFERENCES categories(id) ON DELETE CASCADE
 );
 
 -- Category History Table
@@ -214,8 +214,8 @@ CREATE TABLE IF NOT EXISTS category_history (
     new_values VARCHAR(5000),
     comments VARCHAR(100),
     initial BOOLEAN DEFAULT FALSE,
-    CONSTRAINT fk_category_history_category FOREIGN KEY (category_id) REFERENCES categories(id),
-    CONSTRAINT fk_category_history_edited_by FOREIGN KEY (edited_by) REFERENCES users(id)
+    CONSTRAINT fk_category_history_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+    CONSTRAINT fk_category_history_edited_by FOREIGN KEY (edited_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Algorithms Table
@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS custom_algorithms (
 CREATE TABLE IF NOT EXISTS custom_algorithm_keywords (
     algorithm_id INTEGER NOT NULL,
     keyword VARCHAR(255),
-    CONSTRAINT fk_custom_algorithm_keywords_algorithm FOREIGN KEY (algorithm_id) REFERENCES custom_algorithms(id)
+    CONSTRAINT fk_custom_algorithm_keywords_algorithm FOREIGN KEY (algorithm_id) REFERENCES custom_algorithms(id) ON DELETE CASCADE
 );
 
 -- Custom Algorithm Images Table
@@ -260,7 +260,7 @@ CREATE TABLE IF NOT EXISTS custom_algorithm_images (
     uploaded_at TIMESTAMP WITH TIME ZONE,
     version VARCHAR(255),
     is_active BOOLEAN DEFAULT FALSE,
-    CONSTRAINT fk_custom_algorithm_images_algorithm FOREIGN KEY (custom_algorithm_id) REFERENCES custom_algorithms(id)
+    CONSTRAINT fk_custom_algorithm_images_algorithm FOREIGN KEY (custom_algorithm_id) REFERENCES custom_algorithms(id) ON DELETE CASCADE
 );
 
 -- Algorithm Configurations Table (with CASCADE DELETE)
@@ -294,8 +294,8 @@ CREATE TABLE IF NOT EXISTS algorithm_parameters (
     range VARCHAR(255),
     algorithm_id INTEGER,
     configuration_id INTEGER,
-    CONSTRAINT fk_algorithm_parameters_algorithm FOREIGN KEY (algorithm_id) REFERENCES custom_algorithms(id),
-    CONSTRAINT fk_algorithm_parameters_configuration FOREIGN KEY (configuration_id) REFERENCES custom_algorithm_configurations(id)
+    CONSTRAINT fk_algorithm_parameters_algorithm FOREIGN KEY (algorithm_id) REFERENCES custom_algorithms(id) ON DELETE CASCADE,
+    CONSTRAINT fk_algorithm_parameters_configuration FOREIGN KEY (configuration_id) REFERENCES custom_algorithm_configurations(id) ON DELETE CASCADE
 );
 
 -- Datasets Table (with CASCADE DELETE)
@@ -314,7 +314,7 @@ CREATE TABLE IF NOT EXISTS datasets (
     functional_type VARCHAR(20) DEFAULT 'TRAIN',
     CONSTRAINT fk_datasets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_datasets_accessibility FOREIGN KEY (accessibility_id) REFERENCES CONST_DATASET_ACCESSIBILITIES(id),
-    CONSTRAINT fk_datasets_category FOREIGN KEY (category_id) REFERENCES categories(id)
+    CONSTRAINT fk_datasets_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
 
 -- Dataset Configurations Table
@@ -325,7 +325,7 @@ CREATE TABLE IF NOT EXISTS dataset_configurations (
     upload_date TIMESTAMP WITH TIME ZONE,
     status VARCHAR(255),
     dataset_id INTEGER,
-    CONSTRAINT fk_dataset_configurations_dataset FOREIGN KEY (dataset_id) REFERENCES datasets(id)
+    CONSTRAINT fk_dataset_configurations_dataset FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE CASCADE
 );
 
 -- Dataset Shares Table
@@ -336,9 +336,9 @@ CREATE TABLE IF NOT EXISTS dataset_shares (
     shared_by_user_id UUID NOT NULL,
     shared_at TIMESTAMP WITH TIME ZONE NOT NULL,
     comment TEXT,
-    CONSTRAINT fk_dataset_shares_dataset FOREIGN KEY (dataset_id) REFERENCES datasets(id),
-    CONSTRAINT fk_dataset_shares_shared_with FOREIGN KEY (shared_with_user_id) REFERENCES users(id),
-    CONSTRAINT fk_dataset_shares_shared_by FOREIGN KEY (shared_by_user_id) REFERENCES users(id),
+    CONSTRAINT fk_dataset_shares_dataset FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE CASCADE,
+    CONSTRAINT fk_dataset_shares_shared_with FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_dataset_shares_shared_by FOREIGN KEY (shared_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT uk_dataset_shares UNIQUE (dataset_id, shared_with_user_id)
 );
 
@@ -351,9 +351,9 @@ CREATE TABLE IF NOT EXISTS dataset_share_history (
     action_at TIMESTAMP WITH TIME ZONE,
     action_type INTEGER,
     comment TEXT,
-    CONSTRAINT fk_dataset_share_history_dataset FOREIGN KEY (dataset_id) REFERENCES datasets(id),
-    CONSTRAINT fk_dataset_share_history_target_user FOREIGN KEY (target_user_id) REFERENCES users(id),
-    CONSTRAINT fk_dataset_share_history_action_by FOREIGN KEY (action_by_user_id) REFERENCES users(id),
+    CONSTRAINT fk_dataset_share_history_dataset FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE CASCADE,
+    CONSTRAINT fk_dataset_share_history_target_user FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_dataset_share_history_action_by FOREIGN KEY (action_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_dataset_share_history_action_type FOREIGN KEY (action_type) REFERENCES CONST_DATASET_SHARE_ACTION_TYPES(id)
 );
 
@@ -364,9 +364,9 @@ CREATE TABLE IF NOT EXISTS dataset_copies (
     copied_by_user_id UUID NOT NULL,
     copy_operated_by_user_id UUID NOT NULL,
     copy_date TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT fk_dataset_copies_original FOREIGN KEY (original_dataset_id) REFERENCES datasets(id),
-    CONSTRAINT fk_dataset_copies_copied_by FOREIGN KEY (copied_by_user_id) REFERENCES users(id),
-    CONSTRAINT fk_dataset_copies_operated_by FOREIGN KEY (copy_operated_by_user_id) REFERENCES users(id)
+    CONSTRAINT fk_dataset_copies_original FOREIGN KEY (original_dataset_id) REFERENCES datasets(id) ON DELETE CASCADE,
+    CONSTRAINT fk_dataset_copies_copied_by FOREIGN KEY (copied_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_dataset_copies_operated_by FOREIGN KEY (copy_operated_by_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Trainings Table (with CASCADE DELETE)
@@ -383,11 +383,11 @@ CREATE TABLE IF NOT EXISTS trainings (
     results TEXT,
     retrained_from INTEGER,
     CONSTRAINT fk_trainings_status FOREIGN KEY (status_id) REFERENCES CONST_TRAINING_STATUSES(id),
-    CONSTRAINT fk_trainings_algorithm_config FOREIGN KEY (algorithm_configuration_id) REFERENCES algorithm_configurations(id),
-    CONSTRAINT fk_trainings_custom_algorithm_config FOREIGN KEY (custom_algorithm_configuration_id) REFERENCES custom_algorithm_configurations(id),
+    CONSTRAINT fk_trainings_algorithm_config FOREIGN KEY (algorithm_configuration_id) REFERENCES algorithm_configurations(id) ON DELETE SET NULL,
+    CONSTRAINT fk_trainings_custom_algorithm_config FOREIGN KEY (custom_algorithm_configuration_id) REFERENCES custom_algorithm_configurations(id) ON DELETE SET NULL,
     CONSTRAINT fk_trainings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT fk_trainings_dataset_config FOREIGN KEY (dataset_id) REFERENCES dataset_configurations(id),
-    CONSTRAINT fk_trainings_retrained_from FOREIGN KEY (retrained_from) REFERENCES trainings(id)
+    CONSTRAINT fk_trainings_dataset_config FOREIGN KEY (dataset_id) REFERENCES dataset_configurations(id) ON DELETE SET NULL,
+    CONSTRAINT fk_trainings_retrained_from FOREIGN KEY (retrained_from) REFERENCES trainings(id) ON DELETE SET NULL
 );
 
 -- Models Table (with CASCADE DELETE on training)
@@ -413,7 +413,7 @@ CREATE TABLE IF NOT EXISTS models (
     CONSTRAINT fk_models_type FOREIGN KEY (model_type_id) REFERENCES CONST_MODEL_TYPES(id),
     CONSTRAINT fk_models_status FOREIGN KEY (status_id) REFERENCES CONST_MODEL_STATUSES(id),
     CONSTRAINT fk_models_accessibility FOREIGN KEY (accessibility_id) REFERENCES CONST_MODEL_ACCESSIBILITES(id),
-    CONSTRAINT fk_models_category FOREIGN KEY (category_id) REFERENCES categories(id)
+    CONSTRAINT fk_models_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
 
 -- Model Keywords Table (Element Collection per V4)
@@ -433,9 +433,9 @@ CREATE TABLE IF NOT EXISTS models_executions (
     dataset_id INTEGER,
     executed_by_user_id UUID NOT NULL,
     accessibility_id INTEGER,
-    CONSTRAINT fk_model_executions_model FOREIGN KEY (model_id) REFERENCES models(id),
+    CONSTRAINT fk_model_executions_model FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
     CONSTRAINT fk_model_executions_status FOREIGN KEY (status_id) REFERENCES CONST_MODEL_EXEC_STATUSES(id),
-    CONSTRAINT fk_model_executions_dataset FOREIGN KEY (dataset_id) REFERENCES datasets(id),
+    CONSTRAINT fk_model_executions_dataset FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE SET NULL,
     CONSTRAINT fk_model_executions_user FOREIGN KEY (executed_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_model_executions_accessibility FOREIGN KEY (accessibility_id) REFERENCES CONST_MODEL_EXECUTION_ACCESSIBILITIES(id)
 );
@@ -448,9 +448,9 @@ CREATE TABLE IF NOT EXISTS model_shares (
     shared_by_user_id UUID NOT NULL,
     shared_at TIMESTAMP WITH TIME ZONE NOT NULL,
     comment TEXT,
-    CONSTRAINT fk_model_shares_model FOREIGN KEY (model_id) REFERENCES models(id),
-    CONSTRAINT fk_model_shares_shared_with FOREIGN KEY (shared_with_user_id) REFERENCES users(id),
-    CONSTRAINT fk_model_shares_shared_by FOREIGN KEY (shared_by_user_id) REFERENCES users(id),
+    CONSTRAINT fk_model_shares_model FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    CONSTRAINT fk_model_shares_shared_with FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_model_shares_shared_by FOREIGN KEY (shared_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT uk_model_shares UNIQUE (model_id, shared_with_user_id)
 );
 
@@ -463,9 +463,9 @@ CREATE TABLE IF NOT EXISTS model_share_history (
     action INTEGER NOT NULL,
     action_time TIMESTAMP WITH TIME ZONE NOT NULL,
     comment TEXT,
-    CONSTRAINT fk_model_share_history_model FOREIGN KEY (model_id) REFERENCES models(id),
-    CONSTRAINT fk_model_share_history_shared_with FOREIGN KEY (shared_with_user_id) REFERENCES users(id),
-    CONSTRAINT fk_model_share_history_performed_by FOREIGN KEY (action_performed_by) REFERENCES users(id),
+    CONSTRAINT fk_model_share_history_model FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    CONSTRAINT fk_model_share_history_shared_with FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_model_share_history_performed_by FOREIGN KEY (action_performed_by) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_model_share_history_action FOREIGN KEY (action) REFERENCES CONST_MODEL_SHARE_ACTION_TYPES(id)
 );
 
