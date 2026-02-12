@@ -13,8 +13,12 @@ import com.cloud_ml_app_thesis.dto.request.user.UserUpdateRequest;
 import com.cloud_ml_app_thesis.dto.response.GenericResponse;
 import com.cloud_ml_app_thesis.dto.response.Metadata;
 import com.cloud_ml_app_thesis.dto.user.UserDTO;
+import com.cloud_ml_app_thesis.entity.Category;
+import com.cloud_ml_app_thesis.entity.CategoryRequest;
 import com.cloud_ml_app_thesis.entity.User;
 import com.cloud_ml_app_thesis.exception.UserNotFoundException;
+import com.cloud_ml_app_thesis.repository.CategoryRepository;
+import com.cloud_ml_app_thesis.repository.CategoryRequestRepository;
 import com.cloud_ml_app_thesis.repository.JwtTokenRepository;
 import com.cloud_ml_app_thesis.repository.PasswordResetTokenRepository;
 import com.cloud_ml_app_thesis.repository.UserRepository;
@@ -34,6 +38,10 @@ public class UserService {
     private final ModelMapper modelMapper;
     private final PasswordResetTokenRepository tokenRepository;
     private final JwtTokenRepository jwtTokenRepository;
+    private final CategoryRepository categoryRepository;
+    private final CategoryRequestRepository categoryRequestRepository;
+
+    private static final String SYSTEM_USERNAME = "SYSTEM";
 
     public GenericResponse<?> getUserProfile(User currentUser) {
         log.debug("📋 Fetching profile for user: {}", currentUser.getUsername());
@@ -113,27 +121,7 @@ public class UserService {
     @Transactional
     public void deleteUser(User user, String reason) {
         log.info("❌ {} deleted their own account. Reason: {}", user.getUsername(), reason);
-
-        // 1. Mark all valid JWT tokens as revoked/expired
-        jwtTokenRepository.findValidTokensByUser(user.getId()).forEach(token -> {
-            token.setExpired(true);
-            token.setRevoked(true);
-            token.setRevokedAt(LocalDateTime.now());
-            jwtTokenRepository.save(token);
-        });
-
-        // 2. Delete all JWT tokens for this user
-        jwtTokenRepository.deleteAll(jwtTokenRepository.findByUser(user));
-
-        // 3. Delete password reset tokens
-        tokenRepository.deleteByUser(user);
-
-        // 4. Unlink roles
-        user.getRoles().clear();
-        userRepository.save(user);
-
-        // 5. Finally delete user
-        userRepository.delete(user);
+        performUserDeletion(user);
         log.info("✅ User {} successfully deleted", user.getUsername());
     }
 
@@ -143,8 +131,18 @@ public class UserService {
                 .orElseThrow(() -> new UserNotFoundException("User not found with username: " + username));
 
         log.info("❌ Admin deleted user: {} ({}) | Reason: {}", user.getUsername(), user.getEmail(), reason);
+        performUserDeletion(user);
+        log.info("✅ Admin successfully deleted user {}", user.getUsername());
+    }
 
-        // 1. Mark all valid JWT tokens as revoked/expired
+    /**
+     * Common logic for user deletion - transfers resources to SYSTEM user
+     */
+    private void performUserDeletion(User user) {
+        // 1. Transfer categories to SYSTEM user
+        transferCategoriesToSystem(user);
+
+        // 2. Mark all valid JWT tokens as revoked/expired
         jwtTokenRepository.findValidTokensByUser(user.getId()).forEach(token -> {
             token.setExpired(true);
             token.setRevoked(true);
@@ -152,18 +150,49 @@ public class UserService {
             jwtTokenRepository.save(token);
         });
 
-        // 2. Delete all JWT tokens for this user
+        // 3. Delete all JWT tokens for this user
         jwtTokenRepository.deleteAll(jwtTokenRepository.findByUser(user));
 
-        // 3. Delete password reset tokens
+        // 4. Delete password reset tokens
         tokenRepository.deleteByUser(user);
 
-        // 4. Unlink roles
+        // 5. Unlink roles
         user.getRoles().clear();
         userRepository.save(user);
 
-        // 5. Finally delete user
+        // 6. Finally delete user
         userRepository.delete(user);
-        log.info("✅ Admin successfully deleted user {}", user.getUsername());
+    }
+
+    /**
+     * Transfers all categories created by the user to the SYSTEM user.
+     * Also transfers category requests made by the user.
+     */
+    private void transferCategoriesToSystem(User user) {
+        User systemUser = userRepository.findByUsername(SYSTEM_USERNAME)
+                .orElseThrow(() -> new IllegalStateException(
+                        "SYSTEM user not found. Please ensure the database migration has been run."));
+
+        // Transfer categories created by this user
+        List<Category> userCategories = categoryRepository.findByCreatedBy(user);
+        if (!userCategories.isEmpty()) {
+            log.info("🔄 Transferring {} categories from '{}' to SYSTEM user",
+                    userCategories.size(), user.getUsername());
+            for (Category category : userCategories) {
+                category.setCreatedBy(systemUser);
+                categoryRepository.save(category);
+            }
+        }
+
+        // Transfer category requests made by this user
+        List<CategoryRequest> userRequests = categoryRequestRepository.findByRequestedBy(user);
+        if (!userRequests.isEmpty()) {
+            log.info("🔄 Transferring {} category requests from '{}' to SYSTEM user",
+                    userRequests.size(), user.getUsername());
+            for (CategoryRequest request : userRequests) {
+                request.setRequestedBy(systemUser);
+                categoryRequestRepository.save(request);
+            }
+        }
     }
 }

@@ -54,8 +54,19 @@ public class PredictionOrchestrator {
         }
 
         // Validate prediction dataset (either file or datasetId required, not both)
-        boolean hasFile = request.getPredictionFile() != null && !request.getPredictionFile().isEmpty();
+        MultipartFile predFile = request.getPredictionFile();
+        log.info("📥 Received request - predictionFile: {}, size: {}, contentType: {}, datasetId: {}, modelId: {}",
+                predFile != null ? predFile.getOriginalFilename() : "null",
+                predFile != null ? predFile.getSize() : "N/A",
+                predFile != null ? predFile.getContentType() : "N/A",
+                request.getDatasetId(),
+                request.getModelId());
+
+        boolean hasFile = predFile != null && !predFile.isEmpty();
         boolean hasDatasetId = request.getDatasetId() != null;
+
+        log.info("📥 Validation - hasFile: {}, hasDatasetId: {}, isEmpty: {}",
+                hasFile, hasDatasetId, predFile != null ? predFile.isEmpty() : "N/A");
 
         if (hasFile && hasDatasetId) {
             throw new BadRequestException("Provide either predictionFile or datasetId, not both.");

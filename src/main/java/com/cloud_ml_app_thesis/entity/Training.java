@@ -60,7 +60,7 @@ public class Training {
     @OneToOne(mappedBy = "training", cascade = CascadeType.ALL, orphanRemoval = true)
     private Model model;
 
-    @Column(name = "results", length = 3000)
+    @Column(name = "results", columnDefinition = "TEXT")
     private String results;
 
     @ManyToOne(fetch = FetchType.LAZY)

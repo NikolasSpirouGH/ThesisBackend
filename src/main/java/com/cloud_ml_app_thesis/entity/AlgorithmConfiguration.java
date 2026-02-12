@@ -49,8 +49,10 @@ public class AlgorithmConfiguration {
     public void setOptions(String options){
         if (ValidationUtil.stringExists(options)) {
             this.options = options.trim();
-        } else if (algorithm != null) {
-            this.options = algorithm.getOptions().trim();
+        } else if (algorithm != null && algorithm.getDefaultOptions() != null) {
+            // Use defaultOptions (actual command-line options like "-K -D")
+            // NOT options (which is list of available option names like "K,D,O,...")
+            this.options = algorithm.getDefaultOptions().trim();
         } else {
             this.options = null;
         }

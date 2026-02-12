@@ -140,9 +140,16 @@ ON CONFLICT (name) DO NOTHING;
 -- Passwords:
 --   bigspy & johnken: "adminPassword"
 --   nickriz: "userPassword"
+--   SYSTEM: cannot login (invalid hash)
 
 INSERT INTO users (id, username, first_name, last_name, email, password, age, profession, country, status_id)
 VALUES
+    -- SYSTEM user: for orphaned resources when users are deleted (cannot login)
+    (gen_random_uuid(), 'SYSTEM', 'System', 'Account', 'system@internal.local',
+     '$INVALID_PASSWORD_HASH$',
+     0, 'System Account', 'Internal',
+     (SELECT id FROM const_user_statuses WHERE name = 'ACTIVE' LIMIT 1)),
+
     -- Admin: bigspy (adminPassword)
     (gen_random_uuid(), 'bigspy', 'Nikolas', 'Spirou', 'nikolas@gmail.com',
      '$argon2id$v=19$m=16384,t=2,p=1$ueeWp8dM+qkXeygJ01I2Hw$BaT7xKcCBmXNE0j8UqIwpIkgwwCiIGL7mc33FEcA2B0',
@@ -163,6 +170,12 @@ VALUES
 ON CONFLICT (email) DO NOTHING;
 
 -- Assign roles to users
+INSERT INTO user_roles (user_id, role_id)
+SELECT u.id, r.id
+FROM users u, roles r
+WHERE u.username = 'SYSTEM' AND r.name = 'ADMIN'
+ON CONFLICT DO NOTHING;
+
 INSERT INTO user_roles (user_id, role_id)
 SELECT u.id, r.id
 FROM users u, roles r

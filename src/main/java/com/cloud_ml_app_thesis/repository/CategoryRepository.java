@@ -1,6 +1,7 @@
 package com.cloud_ml_app_thesis.repository;
 
 import com.cloud_ml_app_thesis.entity.Category;
+import com.cloud_ml_app_thesis.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,4 +17,6 @@ public interface CategoryRepository extends JpaRepository<Category, Integer> {
     Set<Category> findByParentCategoriesId(@Param("parentId") Integer parentId);
 
     boolean existsByName(String name);
+
+    List<Category> findByCreatedBy(User user);
 }

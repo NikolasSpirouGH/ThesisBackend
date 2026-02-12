@@ -380,7 +380,7 @@ CREATE TABLE IF NOT EXISTS trainings (
     user_id UUID NOT NULL,
     dataset_id INTEGER NOT NULL,
     version INTEGER,
-    results VARCHAR(3000),
+    results TEXT,
     retrained_from INTEGER,
     CONSTRAINT fk_trainings_status FOREIGN KEY (status_id) REFERENCES CONST_TRAINING_STATUSES(id),
     CONSTRAINT fk_trainings_algorithm_config FOREIGN KEY (algorithm_configuration_id) REFERENCES algorithm_configurations(id),
