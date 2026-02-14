@@ -16,7 +16,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/dataset/share")
+@RequestMapping("/api/dataset/share")
 @RequiredArgsConstructor
 public class DatasetSharingController {
 

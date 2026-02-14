@@ -20,7 +20,7 @@ public class DatasetShareHistory {
     @ManyToOne(optional = false)
     private Dataset dataset;
 
-    @ManyToOne(optional = false)
+    @ManyToOne(optional = true)
     private User targetUser;
 
     @ManyToOne(optional = false)

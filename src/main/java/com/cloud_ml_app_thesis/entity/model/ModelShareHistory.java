@@ -27,7 +27,7 @@ public class ModelShareHistory {
     @JoinColumn(name = "model_id")
     private Model model;
 
-    @ManyToOne(optional = false)
+    @ManyToOne(optional = true)
     @JoinColumn(name = "shared_with_user_id")
     private User sharedWithUser;
 
